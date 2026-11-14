@@ -15,6 +15,22 @@
 - 「自定义 Skill」在至少一个外部 Skill 启用时显示已启用，已读取的空列表显示未配置。
 - 读取失败或缺少字段的值显示待核实。重复导入时，以该仓库采集时间较新的记录为准。
 
+## 检视统计
+
+在工作台打开「AI 检视统计」，查看按仓库和观测时间保存的报告。可以按 PR、解决状态和采纳结论筛选意见，打开详情查看判定理由与证据链接。
+
+先在本地启动原统计工具（Windows 可双击 `gitcode-review-metrics/start-local.bat`），在本地完成采集和判定。下面的命令从工作台仓库根目录执行，使用只读模式导出 SQLite 中的结果。
+
+```sh
+python tools/export-metrics.py --db ../gitcode-review-metrics/local-app.sqlite --output private/review-metrics.json
+```
+
+也可通过 `--snapshot`、`--assessment` 和 `--config` 对现有 JSON 快照重新计算。省略这三个选项及 `--db` 时使用原工具随附的 `cangjie_docs` 全仓快照。若本地统计工具目录不是工作台的同级目录，可用 `--metrics-dir` 指定。
+
+把生成的 JSON 导入统计页即可查看。浏览器保存导入的报告，支持再导出。组织内部报告可随私有部署放在 `data/review-metrics.json`。GitHub Pages 只发布界面和导入功能。
+
+最终采纳率为「完全采纳 ÷ 全部已解决的独立 Diff 意见」。范围、分类或采纳仍待核实的报告会标出待核实项。
+
 ## 本地运行
 
 ```sh

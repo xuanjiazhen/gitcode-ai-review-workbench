@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="查看 GitCode AI 检视意见、解决状态与采纳统计快照。">
+  <meta name="theme-color" content="#181b16">
+  <title>AI 检视统计 · 仓颉工作台</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23d5fa63'/%3E%3Cpath fill='none' stroke='%23191c15' stroke-width='3.5' stroke-linecap='square' d='M18 13 8 24l10 11m12-22 10 11-10 11m-9-1 6-20'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./metrics.css">
+  <script type="module" src="./metrics.js"></script>
+</head>
+<body class="metrics-page">
+  <a class="skip-link" href="#metrics-content">跳至统计快照</a>
+  <aside class="sidebar">
+    <a class="brand" href="./index.html">
+      <span class="brand-mark" data-icon="code">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m8 6-6 6 6 6m8-12 6 6-6 6m-2-15-4 18"/></svg>
+      </span>
+      <span>仓颉工作台<small>GITCODE WORKBENCH</small></span>
+    </a>
+    <nav class="side-content" aria-label="工作台导航">
+      <p class="nav-label">工作区</p>
+      <a class="side-button" href="./index.html">
+        <span data-icon="grid">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+        </span>
+        AI 检视管理
+      </a>
+      <a class="side-button active" href="./metrics.html" aria-current="page">
+        <span class="metrics-nav-icon" aria-hidden="true"><i></i><i></i><i></i></span>
+        AI 检视统计<span class="nav-pointer" aria-hidden="true">↗</span>
+      </a>
+    </nav>
+    <a class="side-org" href="https://gitcode.com/Cangjie" target="_blank" rel="noopener noreferrer">
+      <span class="org-mark">CJ</span><span>Cangjie<small>GitCode 组织</small></span><span class="side-arrow" aria-hidden="true">↗</span>
+    </a>
+  </aside>
+  <main class="workspace">
+    <header class="topbar">
+      <div class="breadcrumbs"><a href="./index.html">个人工作台</a><span class="slash" aria-hidden="true">/</span><strong>AI 检视统计</strong></div>
+      <a class="button button-quiet metrics-local" href="http://127.0.0.1:8765/" target="_blank" rel="noopener noreferrer">打开本地审阅工具 <span aria-hidden="true">↗</span></a>
+    </header>
+    <section class="hero metrics-hero" aria-labelledby="page-title">
+      <div class="hero-copy">
+        <div class="hero-org"><span class="hero-org-dot" aria-hidden="true"></span>统计快照</div>
+        <h1 id="page-title">AI 检视统计<span aria-hidden="true">.</span></h1>
+        <p>按仓库查看独立意见、解决状态和采纳判定。</p>
+      </div>
+      <div class="metrics-picker">
+        <label for="report-select">检视报告</label>
+        <select id="report-select"><option value="">选择报告</option></select>
+      </div>
+    </section>
+    <section class="metrics-report" aria-labelledby="metrics-report-title">
+      <header class="section-heading metrics-actions">
+        <div><h2 id="metrics-report-title">报告详情</h2></div>
+        <div class="metrics-controls">
+          <button class="button button-primary" id="metrics-import" type="button" disabled>导入报告</button>
+          <button class="button" id="metrics-export" type="button" disabled>导出报告</button>
+        </div>
+      </header>
+      <p id="metrics-notice" class="metrics-notice" role="status"></p>
+      <div id="metrics-content" tabindex="-1">
+        <div class="table-card"><p class="empty">正在载入统计快照…</p></div>
+      </div>
+    </section>
+    <footer><span>仓颉工作台</span><a href="./index.html">查看仓库检视配置 <span aria-hidden="true">↗</span></a></footer>
+  </main>
+  <input id="metrics-file" type="file" accept="application/json,.json" hidden>
+  <dialog id="metrics-detail" class="drawer" aria-labelledby="metrics-detail-title"></dialog>
+</body>
+</html>

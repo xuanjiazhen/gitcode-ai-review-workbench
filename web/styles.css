@@ -160,9 +160,9 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
 }
 @media (max-width: 760px) {
   .sidebar { position: static; width: auto; padding: 11px 14px; flex-direction: row; align-items: center; justify-content: space-between; }
-  .side-content { margin: 0; }
+  .side-content { display: flex; align-items: center; gap: 4px; margin: 0; }
   .side-content .active, .side-org, .nav-label, .topbar .button { display: none; }
-  .side-button { margin: 0; padding: 7px; }
+  .side-button { width: auto; margin: 0; padding: 7px; white-space: nowrap; font-size: 12px; }
   .brand { gap: 7px; }
   .brand-mark { width: 32px; height: 32px; font-size: 19px; }
   .workspace { margin: 0; padding: 0 13px; }
@@ -175,6 +175,8 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
   .metric strong { font-size: 25px; }
 }
 @media (max-width: 490px) {
+  .sidebar { flex-wrap: wrap; gap: 5px; }
+  .side-button [data-icon] { display: none; }
   .hero { grid-template-columns: 1fr; padding: 22px 17px 16px; }
   h1 { margin: 10px 0; }
   .hero-copy p { font-size: 12px; }

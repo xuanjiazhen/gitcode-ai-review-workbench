@@ -23,7 +23,7 @@ jobs:
           node-version: '22'
           package-manager-cache: false
       - name: Build static site
-        run: node tools/build.mjs
+        run: node tools/build.mjs --public
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist

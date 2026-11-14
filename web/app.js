@@ -1,6 +1,7 @@
 import { bookmarkletHref } from './collector.js';
 
 const icons = {
+  chart: '<path d="M4 4v16h16M8 16v-4m5 4V8m5 8V5"/>',
   code: '<path d="m8 6-6 6 6 6m8-12 6 6-6 6m-2-15-4 18"/>',
   grid: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
   sync: '<path d="M20 10a8 8 0 0 0-14-5L3 8m0-5v5h5m-4 6a8 8 0 0 0 14 5l3-3m0 5v-5h-5"/>',
@@ -231,7 +232,8 @@ function renderDetail(path) {
   detail.innerHTML = `${dialogHeader('detail-title', row.name, row.path)}
     <div class="dialog-body">
       ${row.description ? `<p>${escape(row.description)}</p>` : ''}
-      <div class="dialog-actions">${externalLink(row.settingsUrl, '打开 AI 检视设置', 'button button-primary')}${externalLink(row.url, '查看仓库', 'button')}</div>
+      <div class="dialog-actions">${externalLink(row.settingsUrl, '打开 AI 检视设置', 'button button-primary')}${externalLink(row.url, '查看仓库', 'button')}
+        <a class="button" href="./metrics.html?repo=${encodeURIComponent(row.path)}">查看检视统计</a></div>
       <dl class="status-list">
         <div><dt>AI 检视</dt><dd>${pill(row.aiReview)}</dd></div>
         <div><dt>PR 创建自动检视</dt><dd>${pill(row.autoReview)}</dd></div>
