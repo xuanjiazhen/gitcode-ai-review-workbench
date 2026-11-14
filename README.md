@@ -17,9 +17,17 @@
 
 ## 检视统计
 
-在工作台打开「AI 检视统计」，查看按仓库和观测时间保存的报告。可以按 PR、解决状态和采纳结论筛选意见，打开详情查看判定理由与证据链接。
+在工作台打开「AI 检视统计」，选择统计批次，切换组织整体、单仓或自选多仓。可以按仓库、PR、解决状态和采纳结论筛选意见，打开详情查看证据。
 
-先在本地启动原统计工具（Windows 可双击 `gitcode-review-metrics/start-local.bat`），在本地完成采集和判定。下面的命令从工作台仓库根目录执行，使用只读模式导出 SQLite 中的结果。
+在工作台仓库根目录执行以下命令，按已核实的 AI 检视配置采集最近 30 个完整北京时间自然日内创建的 PR。将 `--settings` 指向包含每个仓库状态的配置快照。可用 `--created-after` 和 `--created-before` 指定含时区的起止时间（包含起点，截止时间不含）。同一轮可复用断点目录补采，另起一轮请指定新目录。
+
+```sh
+python tools/collect-metrics.py --settings private/review-settings.json --checkpoint-dir private/metrics-run --output private/review-metrics.json
+```
+
+采集报告记录 Bot 文件 Diff 评论候选、候选解决状态和 PR 读取覆盖。独立意见及采纳率来自后续分类和证据判定。组织或选定仓库的采纳率用各仓分子和分母加总，有待核实项时显示「待判定」。
+
+已有判定可从原统计工具导出。Windows 可双击 `gitcode-review-metrics/start-local.bat` 打开原工具。下面的命令使用只读模式导出 SQLite 中的结果。
 
 ```sh
 python tools/export-metrics.py --db ../gitcode-review-metrics/local-app.sqlite --output private/review-metrics.json

@@ -44,15 +44,46 @@
     </header>
     <section class="hero metrics-hero" aria-labelledby="page-title">
       <div class="hero-copy">
-        <div class="hero-org"><span class="hero-org-dot" aria-hidden="true"></span>统计快照</div>
-        <h1 id="page-title">AI 检视统计<span aria-hidden="true">.</span></h1>
-        <p>按仓库查看独立意见、解决状态和采纳判定。</p>
+        <h1 id="page-title">AI 检视统计</h1>
+        <p>按 PR 创建日期查看检视量、解决状态和采纳结论。</p>
       </div>
-      <div class="metrics-picker">
-        <label for="report-select">检视报告</label>
-        <select id="report-select"><option value="">选择报告</option></select>
+      <div class="metrics-picker" aria-label="统计设置">
+        <label for="metrics-period">统计批次</label>
+        <select id="metrics-period"><option value="">正在载入</option></select>
       </div>
     </section>
+    <div class="metrics-mode-bar">
+      <fieldset id="metrics-mode">
+        <legend class="visually-hidden">统计范围</legend>
+        <label><input type="radio" name="metrics-mode" value="overview" checked><span>组织整体</span></label>
+        <label><input type="radio" name="metrics-mode" value="single"><span>单个仓库</span></label>
+        <label><input type="radio" name="metrics-mode" value="custom"><span>自选仓库</span></label>
+      </fieldset>
+      <p id="metrics-scope-summary" class="metrics-scope-summary" role="status"></p>
+    </div>
+    <div id="metrics-single-picker" class="metrics-scope-panel" hidden>
+      <div>
+        <label for="report-select">仓库报告</label>
+        <p>选择要查看的仓库和观测时间。</p>
+      </div>
+      <select id="report-select"><option value="">选择报告</option></select>
+    </div>
+    <fieldset id="metrics-repo-picker" class="metrics-repo-picker" hidden>
+      <legend>选择仓库</legend>
+      <div class="metrics-repo-head">
+        <label class="search">
+          <span data-icon="search">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.65" stroke-linecap="round" aria-hidden="true"><circle cx="10.5" cy="10.5" r="5.5"/><path d="m15 15 4 4"/></svg>
+          </span>
+          <input id="metrics-repo-search" type="search" placeholder="搜索仓库…" aria-label="搜索可选仓库" autocomplete="off">
+        </label>
+        <div class="metrics-repo-buttons">
+          <button class="button" id="metrics-repo-all" type="button">全选仓库</button>
+          <button class="button button-quiet" id="metrics-repo-clear" type="button">清空选择</button>
+        </div>
+      </div>
+      <div id="metrics-repo-options" class="metrics-repo-options"></div>
+    </fieldset>
     <section class="metrics-report" aria-labelledby="metrics-report-title">
       <header class="section-heading metrics-actions">
         <div><h2 id="metrics-report-title">报告详情</h2></div>

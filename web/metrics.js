@@ -3,6 +3,10 @@ const storageKey = 'cangjie-workbench:review-metrics:v1';
 const findingsTable = byId('metrics-content');
 const reportSelect = byId('report-select');
 const detail = byId('metrics-detail');
+const modeSelect = byId('metrics-mode');
+const periodSelect = byId('metrics-period');
+const repoSearch = byId('metrics-repo-search');
+const repoOptions = byId('metrics-repo-options');
 const counts = [
   'all_bot_comment_count', 'diff_comment_count', 'discussion_comment_count', 'scope_pending_count',
   'finding_count', 'unclassified_candidate_count', 'resolved', 'unresolved', 'state_unknown',
@@ -20,8 +24,29 @@ const dateFormat = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'medium', timeStyle: 'short', timeZone: 'Asia/Shanghai',
 });
 const percentFormat = new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 1 });
+const dayFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeZone: 'Asia/Shanghai' });
+const formatCount = new Intl.NumberFormat('zh-CN');
+const repoKey = value => value.toLowerCase();
+const validPath = value => typeof value === 'string' && /^[\w.-]+\/[\w.-]+$/.test(value) &&
+  !value.split('/').some(part => part === '.' || part === '..');
+const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
+const query = new URLSearchParams(location.search);
+const linkedRepo = validPath(query.get('repo')) ? query.get('repo') : '';
+const pageSize = 50;
 let reports = [];
-let activeReport;
+let enabledRepos = [];
+let activeReports = [];
+let detailRows = [];
+let tablePage = 0;
+let activeSingleRepo = linkedRepo;
+const customRepos = new Set();
+let customInitialized = false;
+
+function scopeMode() { return modeSelect.querySelector(':checked').value; }
+
+function setScopeMode(mode) {
+  modeSelect.querySelector(`[value="${mode}"]`).checked = true;
+}
 
 function escape(value) {
   return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -59,18 +84,53 @@ function evidenceUrl(value) {
 
 function isCount(value) { return Number.isSafeInteger(value) && value >= 0; }
 
+function normalizeScope(value, complete) {
+  if (!['repository', 'selected_prs'].includes(value?.type) || !Array.isArray(value.prs) ||
+    value.prs.some(pr => !isCount(pr) || pr < 1) || new Set(value.prs).size !== value.prs.length) {
+    throw new Error('报告 PR 范围无效。');
+  }
+  const scope = { type: value.type, prs: value.prs };
+  if (value.created_after !== undefined || value.created_before !== undefined) {
+    if (value.type !== 'selected_prs' || !validDate(value.created_after) || !validDate(value.created_before) ||
+      Date.parse(value.created_after) >= Date.parse(value.created_before) ||
+      !isCount(value.collected_prs) || value.collected_prs > value.prs.length ||
+      complete && value.collected_prs !== value.prs.length ||
+      value.failed_prs !== undefined && (!Array.isArray(value.failed_prs) ||
+        value.failed_prs.some(pr => !value.prs.includes(pr)) || new Set(value.failed_prs).size !== value.failed_prs.length ||
+        value.failed_prs.length !== value.prs.length - value.collected_prs)) {
+      throw new Error('报告时间范围或采集覆盖不一致。');
+    }
+    Object.assign(scope, {
+      created_after: new Date(value.created_after).toISOString(),
+      created_before: new Date(value.created_before).toISOString(),
+      collected_prs: value.collected_prs,
+    });
+    if (value.failed_prs !== undefined) scope.failed_prs = value.failed_prs;
+    if (isCount(value.bot_pr_count) && value.bot_pr_count <= value.collected_prs) scope.bot_pr_count = value.bot_pr_count;
+  }
+  return scope;
+}
+
+function normalizeCandidates(value, prs, count) {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || value.length !== count ||
+    new Set(value.map(row => row?.id)).size !== count ||
+    value.some(row => !row || !prs.has(row.pr) || !Object.hasOwn(states, row.state) ||
+      typeof row.id !== 'string' || !row.id.startsWith(`${row.pr}:`) || !/^\d+:\d+$/.test(row.id))) {
+    throw new Error('报告包含无效的 Diff 候选记录。');
+  }
+  return value.map(({ id, pr, state }) => ({ id, pr, state }));
+}
+
 function normalizeReport(value) {
-  if (typeof value?.repository !== 'string' || !/^[\w.-]+\/[\w.-]+$/.test(value.repository) ||
-    value.repository.split('/').some(part => part === '.' || part === '..') ||
-    typeof value.observed_at !== 'string' || Number.isNaN(Date.parse(value.observed_at)) ||
-    !['repository', 'selected_prs'].includes(value.scope?.type) || !Array.isArray(value.scope.prs) ||
-    value.scope.prs.some(pr => !isCount(pr) || pr < 1) ||
-    new Set(value.scope.prs).size !== value.scope.prs.length ||
+  if (!validPath(value?.repository) || !validDate(value.observed_at) ||
     value.rule_version !== 'diff-only-resolved-v2' || typeof value.collection_complete !== 'boolean' ||
     counts.some(key => !isCount(value[key])) || !Array.isArray(value.findings)) {
     throw new Error('报告格式不正确。请使用工作台的统计导出命令生成 JSON。');
   }
-  const prs = new Set(value.scope.prs);
+  const scope = normalizeScope(value.scope, value.collection_complete);
+  const prs = new Set(scope.prs);
+  const candidates = normalizeCandidates(value.candidates, prs, value.unclassified_candidate_count);
   const ids = new Set();
   const findingStates = { resolved: 0, unresolved: 0, unknown: 0 };
   const resolvedVerdicts = { full: 0, partial: 0, not_adopted: 0, unknown: 0 };
@@ -113,18 +173,20 @@ function normalizeReport(value) {
   }
   return {
     repository: value.repository, observed_at: value.observed_at,
-    scope: { type: value.scope.type, prs: value.scope.prs },
+    scope,
     rule_version: value.rule_version,
     assessment_version: typeof value.assessment_version === 'string' ? value.assessment_version : null,
     collection_complete: value.collection_complete, classification_complete_for_scope: classificationComplete,
     publishable_for_collected_scope: canPublish,
     ...Object.fromEntries(counts.map(key => [key, value[key]])), ...expectedRates, findings,
+    ...(candidates === undefined ? {} : { candidates }),
   };
 }
 
 function reportKey(report) {
   return JSON.stringify([report.repository.toLowerCase(), new Date(report.observed_at).toISOString(),
-    report.scope.type, [...report.scope.prs].sort((a, b) => a - b), report.assessment_version]);
+    report.scope.type, report.scope.created_after, report.scope.created_before,
+    [...report.scope.prs].sort((a, b) => a - b), report.assessment_version]);
 }
 
 function readReports(value) {
@@ -157,48 +219,138 @@ function card(label, value, hint, featured = false) {
 }
 
 function adoptionLabel(finding) {
+  if (finding.candidate) return ['待分类', ''];
   return finding.state === 'resolved' ? decisions[finding.adoption] : ['暂不计入', ''];
 }
 
-function renderTable() {
+function renderTable(reset = true) {
+  if (reset) tablePage = 0;
   const state = byId('finding-state').value;
   const adoption = byId('finding-adoption').value;
   const search = byId('finding-search').value.trim().replace(/^#/, '').toLowerCase();
-  const filtered = activeReport.findings.map((finding, index) => ({ finding, index })).filter(({ finding }) =>
+  const filtered = detailRows.map((finding, index) => ({ finding, index })).filter(({ finding }) =>
     (!state || finding.state === state) &&
-    (!adoption || finding.state === 'resolved' && finding.adoption === adoption) &&
-    (!search || [finding.pr, finding.id, finding.rationale, ...finding.comment_keys].join(' ').toLowerCase().includes(search)));
+    (!adoption || (adoption === 'candidate' ? finding.candidate : !finding.candidate && finding.state === 'resolved' && finding.adoption === adoption)) &&
+    (!search || [finding.repository, finding.pr, finding.id, finding.rationale, ...finding.comment_keys].join(' ').toLowerCase().includes(search)));
+  const start = tablePage * pageSize;
+  const end = Math.min(start + pageSize, filtered.length);
   byId('findings-rows').innerHTML = filtered.length
-    ? filtered.map(({ finding, index }) => `<tr>
-      <td><a href="${prUrl(activeReport, finding)}" target="_blank" rel="noopener noreferrer">#${finding.pr} ↗</a></td>
-      <td class="metrics-finding-title">${escape(finding.rationale || finding.id)}</td>
+    ? filtered.slice(start, end).map(({ finding, index }) => `<tr>
+      <td><a href="${prUrl(finding)}" target="_blank" rel="noopener noreferrer">#${finding.pr} ↗</a><small>${escape(finding.repository.split('/').at(-1))}</small></td>
+      <td class="metrics-finding-title">${escape(finding.candidate ? `Diff 评论 ${finding.id.split(':')[1]}` : finding.rationale || finding.id)}</td>
       <td>${badge(states[finding.state])}</td><td>${badge(adoptionLabel(finding))}</td>
       <td class="row-end"><button class="row-open" data-finding="${index}" aria-label="查看 PR ${finding.pr} 的意见详情">↗</button></td>
     </tr>`).join('')
     : '<tr><td class="empty" colspan="5">没有符合条件的意见。</td></tr>';
-  byId('findings-count').textContent = `显示 ${filtered.length} / ${activeReport.findings.length} 条意见`;
+  byId('findings-count').textContent = filtered.length ? `显示 ${start + 1}–${end} / ${filtered.length} 条记录` : '0 条结果';
+  byId('findings-prev').disabled = tablePage === 0;
+  byId('findings-next').disabled = end >= filtered.length;
 }
 
-function prUrl(report, finding) {
-  return `https://gitcode.com/${report.repository}/pull/${finding.pr}`;
+function prUrl(finding) {
+  return `https://gitcode.com/${finding.repository}/pull/${finding.pr}`;
 }
 
-function renderReport(report, missingRepo) {
-  activeReport = report;
-  byId('metrics-export').disabled = !report;
-  if (!report) {
-    const title = missingRepo ? `${escape(missingRepo)} 暂无统计报告` : '暂无统计报告';
-    findingsTable.innerHTML = `<section class="metrics-panel empty"><h2>${title}</h2><p>从本地统计工具导出报告，再选择「导入报告」。</p></section>`;
+function aggregate(selected, batch) {
+  const selectedKeys = new Set(selected.map(repoKey));
+  const members = new Map(batch.reports.filter(report => selectedKeys.has(repoKey(report.repository)))
+    .map(report => [repoKey(report.repository), report]));
+  const rows = [...members.values()];
+  const summed = Object.fromEntries(counts.map(key => [key, rows.reduce((total, row) => total + row[key], 0)]));
+  const fullCoverage = !!selected.length && rows.length === selected.length && rows.every(row => row.collection_complete);
+  const classificationReady = fullCoverage && rows.every(row => row.classification_complete_for_scope);
+  const adoptionReady = classificationReady && rows.every(row => row.publishable_for_collected_scope);
+  const stats = {
+    ...summed, collection_complete: fullCoverage, classification_complete_for_scope: classificationReady,
+    publishable_for_collected_scope: adoptionReady,
+    final_adoption_rate: summed.resolved && adoptionReady ? summed.resolved_full / summed.resolved : null,
+    adoption_rate: summed.resolved ? summed.resolved_full / summed.resolved : null,
+    adoption_assessment_coverage: summed.resolved ? (summed.resolved - summed.resolved_adoption_unknown) / summed.resolved : null,
+  };
+  return { stats, rows, members };
+}
+
+function coveragePanel(selected, members) {
+  const complete = selected.filter(path => members.get(repoKey(path))?.collection_complete).length;
+  const withData = members.size;
+  const reports = [...members.values()];
+  const expected = reports.reduce((sum, report) => sum + report.scope.prs.length, 0);
+  const checked = reports.reduce((sum, report) => sum + (report.scope.collected_prs ?? (report.collection_complete ? report.scope.prs.length : 0)), 0);
+  const missing = selected.length - withData;
+  const incomplete = withData - complete;
+  return `<section class="metrics-coverage" aria-labelledby="coverage-title">
+    <h2 id="coverage-title">采集覆盖</h2>
+    <div class="metrics-coverage-grid">
+      <div><strong class="metrics-coverage-count">${complete} / ${selected.length}</strong><p>完成采集的仓库</p></div>
+      <div><strong class="metrics-coverage-count">${formatCount.format(checked)} / ${formatCount.format(expected)}</strong><p>已读取评论的 PR${missing ? '（已有报告仓库）' : ''}</p></div>
+    </div>
+    <progress class="metrics-coverage-progress" max="${selected.length}" value="${complete}" aria-label="仓库采集覆盖"></progress>
+    <p>${[missing && `${missing} 个仓库暂无报告`, incomplete && `${incomplete} 个仓库采集未完成`].filter(Boolean).join(' · ') ||
+      '已读取本次统计范围内的全部 PR。'} </p>
+  </section>`;
+}
+
+function repositoryTable(selected, members) {
+  if (selected.length < 2) return '';
+  const peak = Math.max(1, ...[...members.values()].map(report => report.diff_comment_count));
+  const ordered = [...selected].sort((a, b) =>
+    (members.get(repoKey(b))?.diff_comment_count ?? -1) - (members.get(repoKey(a))?.diff_comment_count ?? -1) || a.localeCompare(b));
+  return `<section class="metrics-repo-results" aria-labelledby="repo-results-title">
+    <div class="section-heading"><div><h2 id="repo-results-title">仓库明细</h2></div></div>
+    <div class="table-card"><div class="table-scroll" tabindex="0" aria-label="仓库统计表格，可横向滚动">
+      <table>
+        <thead><tr><th scope="col">仓库</th><th scope="col">采集状态</th><th scope="col">已读取 PR</th><th scope="col">Bot Diff 评论</th><th scope="col">已解决候选</th><th scope="col">待分类</th><th scope="col">最终采纳率</th></tr></thead>
+        <tbody>${ordered.map(path => {
+          const report = members.get(repoKey(path));
+          const collected = report?.scope.collected_prs ?? (report?.collection_complete ? report.scope.prs.length : null);
+          const rawResolved = report?.candidates?.filter(item => item.state === 'resolved').length;
+          const final = !report ? '—' : report.final_adoption_rate !== null ? ratio(report.final_adoption_rate)
+            : report.publishable_for_collected_scope ? '暂无数据' : '待判定';
+          const state = !report ? ['暂无报告', ''] : report.collection_complete ? ['已完成', 'on'] : ['部分覆盖', 'off'];
+          return `<tr><th scope="row"><button type="button" class="metrics-repo-link" data-single-repo="${escape(path)}">${escape(path.split('/').at(-1))} ↗</button></th>
+            <td>${badge(state)}</td><td>${collected === null ? '—' : collected}${report ? ` / ${report.scope.prs.length}` : ''}</td>
+            <td>${report ? `<span class="metrics-volume"><meter min="0" max="${peak}" value="${report.diff_comment_count}" aria-hidden="true"></meter>${report.diff_comment_count}</span>` : '—'}</td>
+            <td>${rawResolved ?? '—'}</td><td>${report?.unclassified_candidate_count ?? '—'}</td><td>${final}</td></tr>`;
+        }).join('')}</tbody>
+      </table>
+    </div></div>
+  </section>`;
+}
+
+function renderReport(selected, batch) {
+  const { stats: report, rows, members } = aggregate(selected, batch);
+  activeReports = rows;
+  byId('metrics-export').disabled = !rows.length;
+  if (!selected.length) {
+    const title = scopeMode() === 'custom' ? '请选择至少一个仓库' : '暂无统计报告';
+    findingsTable.innerHTML = `<section class="metrics-panel empty"><h2>${title}</h2><p>也可导入本地统计工具导出的报告。</p></section>`;
     return;
   }
+  const coverage = coveragePanel(selected, members);
+  const repoTable = repositoryTable(selected, members);
+  if (!rows.length) {
+    const title = selected.length === 1 ? `${escape(selected[0])} 暂无统计报告` : '暂无统计报告';
+    findingsTable.innerHTML = `${coverage}<section class="metrics-panel empty"><h2>${title}</h2><p>选择其他统计批次，或导入本地统计工具导出的报告。</p></section>${repoTable}`;
+    return;
+  }
+  detailRows = rows.flatMap(row => [
+    ...row.findings.map(finding => ({ ...finding, repository: row.repository })),
+    ...(row.candidates ?? []).map(candidate => ({ ...candidate, repository: row.repository, candidate: true,
+      comment_keys: [candidate.id], evidence: [], rationale: '' })),
+  ]).sort((a, b) => a.repository.localeCompare(b.repository) || b.pr - a.pr || a.id.localeCompare(b.id));
+  const candidateRows = detailRows.filter(item => item.candidate);
+  const rawResolved = candidateRows.filter(row => row.state === 'resolved').length;
+  const rawUnresolved = candidateRows.filter(row => row.state === 'unresolved').length;
+  const newest = rows.reduce((latest, row) => Date.parse(row.observed_at) > Date.parse(latest) ? row.observed_at : latest, rows[0].observed_at);
   const decided = report.resolved - report.resolved_adoption_unknown;
   const final = report.final_adoption_rate !== null ? ratio(report.final_adoption_rate)
-    : report.resolved ? '待判定' : report.publishable_for_collected_scope ? '暂无数据' : '待核实';
-  const snapshotScope = report.scope.type === 'repository' ? '全仓快照' : '指定 PR';
+    : report.publishable_for_collected_scope ? '暂无数据' : '待判定';
+  const hint = report.unclassified_candidate_count ? `${report.unclassified_candidate_count} 条 Diff 评论待分类`
+    : `${report.unresolved} 条未解决${report.state_unknown ? ` · ${report.state_unknown} 条状态未知` : ''}`;
   const boundLabel = report.classification_complete_for_scope ? '已确认采纳下限' : '当前已核实意见内确认占比';
   const bound = report.resolved ? `${report.adoption_numerator} / ${report.resolved} · ${ratio(report.adoption_rate)}` : '暂无数据';
   const pending = [
-    [!report.collection_complete, '采集尚未完成'],
+    [!report.collection_complete, '所选范围有仓库或 PR 数据缺失'],
     [report.scope_pending_count, `${report.scope_pending_count} 条评论类型待核实`],
     [report.unclassified_candidate_count, `${report.unclassified_candidate_count} 条 Diff 评论待分类`],
     [report.state_unknown, `${report.state_unknown} 条意见的解决状态未知`],
@@ -206,14 +358,14 @@ function renderReport(report, missingRepo) {
   ].filter(([needed]) => needed).map(([, label]) => label);
 
   findingsTable.innerHTML = `
-    <div class="metrics-summary">
-      <span><strong>${escape(report.repository)}</strong></span>
-      <span>${snapshotScope} · ${report.scope.prs.length} 个 PR</span>
-      <span><time datetime="${escape(report.observed_at)}">${dateLabel(report.observed_at)}</time> · 北京时间</span>
-    </div>
+    <div class="metrics-summary"><span><strong>${selected.length === 1 ? escape(selected[0]) : `${selected.length} 个仓库`}</strong></span>
+      <span>最近采集 ${dateLabel(newest)}（北京时间）</span></div>
+    ${coverage}
     <div class="metrics">
-      ${card('独立 Diff 意见', report.finding_count, `${report.diff_comment_count} 条 Bot Diff 评论`)}
-      ${card('已解决', report.resolved, `${report.unresolved} 条未解决${report.state_unknown ? ` · ${report.state_unknown} 条状态未知` : ''}`)}
+      ${card('Bot Diff 评论', report.diff_comment_count, `${report.discussion_comment_count} 条讨论区评论另计`)}
+      ${candidateRows.length
+        ? card('已解决的 Diff 候选', rawResolved, `${rawUnresolved} 条未解决，${report.finding_count} 条已分类为独立意见`)
+        : card('已分类独立意见', report.finding_count, hint)}
       ${card('最终采纳率', final, '完全采纳 ÷ 全部已解决', true)}
       ${card('采纳判定覆盖率', ratio(report.adoption_assessment_coverage), `${decided} / ${report.resolved} 条已解决意见已判定`)}
     </div>
@@ -231,26 +383,30 @@ function renderReport(report, missingRepo) {
       <section class="metrics-panel">
         <h2>统计范围</h2>
         <p>${report.all_bot_comment_count} 条 Bot 评论中，${report.diff_comment_count} 条为文件 Diff 评论，${report.discussion_comment_count} 条为讨论区评论。采纳率使用已解决的独立 Diff 意见。</p>
+        ${candidateRows.length ? `<p>待分类候选中有 ${candidateRows.length - rawResolved - rawUnresolved} 条解决状态未知。</p>` : ''}
         ${pending.length ? `<ul class="metrics-pending">${pending.map(label => `<li>${label}</li>`).join('')}</ul>` : ''}
         ${report.resolved ? `<progress class="metrics-progress" max="${report.resolved}" value="${decided}" aria-label="采纳判定覆盖"></progress><small>${decided} / ${report.resolved} 已判定</small>` : ''}
       </section>
     </div>
+    ${repoTable}
     <section aria-labelledby="findings-title">
-      <div class="section-heading"><div><h2 id="findings-title">检视意见</h2><p>按 PR、解决状态和采纳结论筛选，打开详情查看证据。</p></div></div>
+      <div class="section-heading"><div><h2 id="findings-title">检视意见与候选</h2><p>按仓库、PR、解决状态和采纳结论筛选，打开详情查看 GitCode 来源。</p></div></div>
       <div class="table-card">
         <div class="table-tools metrics-finding-tools">
           <label>解决状态 <select id="finding-state"><option value="">全部状态</option>${options(states)}</select></label>
-          <label>采纳结论 <select id="finding-adoption"><option value="">全部结论</option>${options(decisions)}</select></label>
+          <label>采纳结论 <select id="finding-adoption"><option value="">全部结论</option>${options(decisions)}${candidateRows.length ? '<option value="candidate">待分类候选</option>' : ''}</select></label>
           <label class="search"><input id="finding-search" type="search" placeholder="搜索 PR 或意见…" aria-label="搜索 PR 或意见"></label>
         </div>
         <div class="table-scroll" tabindex="0" aria-label="检视意见表格，可横向滚动"><table>
-          <thead><tr><th scope="col">PR</th><th scope="col">判定理由</th><th scope="col">解决状态</th><th scope="col">采纳结论</th><th scope="col" class="row-end">详情</th></tr></thead>
+          <thead><tr><th scope="col">PR / 仓库</th><th scope="col">意见或候选</th><th scope="col">解决状态</th><th scope="col">采纳结论</th><th scope="col" class="row-end">详情</th></tr></thead>
           <tbody id="findings-rows"></tbody>
         </table></div>
-        <div class="table-foot"><span id="findings-count" role="status"></span></div>
+        <div class="table-foot metrics-pagination"><span id="findings-count" role="status"></span><div><button type="button" class="button" id="findings-prev">上一页</button><button type="button" class="button" id="findings-next">下一页</button></div></div>
       </div>
     </section>`;
   for (const id of ['finding-state', 'finding-adoption', 'finding-search']) byId(id).addEventListener('input', renderTable);
+  byId('findings-prev').addEventListener('click', () => { tablePage--; renderTable(false); });
+  byId('findings-next').addEventListener('click', () => { tablePage++; renderTable(false); });
   renderTable();
 }
 
@@ -258,37 +414,109 @@ function options(values) {
   return Object.entries(values).map(([key, [label]]) => `<option value="${key}">${label}</option>`).join('');
 }
 
-function selectReports(preferredKey, preferredRepo) {
-  reportSelect.replaceChildren();
+function batchKey(report) {
+  return report.scope.created_after
+    ? JSON.stringify(['window', report.scope.created_after, report.scope.created_before])
+    : reportKey(report);
+}
+
+function batches() {
+  const groups = new Map();
   for (const report of reports) {
-    const scope = report.scope.type === 'repository' ? '全仓' : `${report.scope.prs.length} 个 PR`;
-    const version = report.assessment_version ? ` · ${report.assessment_version}` : '';
-    reportSelect.add(new Option(`${report.repository} · ${dateLabel(report.observed_at)} · ${scope}${version}`, reportKey(report)));
+    const key = batchKey(report);
+    if (!groups.has(key)) groups.set(key, new Map());
+    const group = groups.get(key);
+    const repo = repoKey(report.repository);
+    if (!group.has(repo)) group.set(repo, report);
   }
-  if (preferredRepo && !reports.some(report => report.repository.toLowerCase() === preferredRepo.toLowerCase())) {
-    reportSelect.add(new Option('选择其他仓库报告', ''), 0);
-    reportSelect.value = '';
-    reportSelect.disabled = !reports.length;
-    renderReport(undefined, preferredRepo);
-    return;
+  return [...groups].map(([id, group]) => {
+    const list = [...group.values()];
+    const first = list[0];
+    const scope = first.scope;
+    const label = scope.created_after
+      ? `PR 创建于 ${dayFormat.format(new Date(scope.created_after))} 至 ${dayFormat.format(new Date(Date.parse(scope.created_before) - 1))}`
+      : `${first.repository.split('/').at(-1)} · ${scope.type === 'repository' ? '全仓快照' : '指定 PR'} · ${dateLabel(first.observed_at)}${first.assessment_version ? ` · ${first.assessment_version}` : ''}`;
+    return { id, label, reports: list, window: !!scope.created_after };
+  }).sort((a, b) => Number(b.window) - Number(a.window));
+}
+
+function renderPeriods(preferred) {
+  const list = batches();
+  periodSelect.replaceChildren(...list.map(batch => new Option(batch.label, batch.id)));
+  if (!list.length) periodSelect.add(new Option('暂无统计批次', ''));
+  if (list.some(batch => batch.id === preferred)) periodSelect.value = preferred;
+  periodSelect.disabled = !list.length;
+  renderScope();
+}
+
+function availableRepos(batch) {
+  const unique = new Map([...enabledRepos, ...batch.reports.map(report => report.repository)]
+    .map(path => [repoKey(path), path]));
+  if (linkedRepo && !unique.has(repoKey(linkedRepo))) unique.set(repoKey(linkedRepo), linkedRepo);
+  return [...unique.values()].sort((a, b) => a.localeCompare(b));
+}
+
+function currentBatch() {
+  return batches().find(batch => batch.id === periodSelect.value) ?? { label: '', reports: [] };
+}
+
+function renderRepoPicker(batch, available, replaceOptions = true) {
+  const listing = new Set(batch.reports.map(report => repoKey(report.repository)));
+  if (replaceOptions) {
+    const search = repoSearch.value.trim().toLowerCase();
+    const choices = available.filter(path => repoKey(path).includes(search));
+    repoOptions.innerHTML = choices.length ? choices.map(path => `<label>
+      <input type="checkbox" value="${escape(path)}"${customRepos.has(repoKey(path)) ? ' checked' : ''}>
+      <span>${escape(path.split('/').at(-1))}<small>${listing.has(repoKey(path)) ? '有报告' : '暂无报告'}</small></span>
+    </label>`).join('') : '<p class="empty">没有匹配的仓库。</p>';
   }
-  if (!reports.length) reportSelect.add(new Option('暂无报告', ''));
-  reportSelect.disabled = !reports.length;
-  const selected = reports.find(report => reportKey(report) === preferredKey) ??
-    reports.find(report => report.repository.toLowerCase() === preferredRepo?.toLowerCase()) ?? reports[0];
-  if (selected) reportSelect.value = reportKey(selected);
-  renderReport(selected);
+  byId('metrics-repo-all').disabled = !available.length || available.every(path => customRepos.has(repoKey(path)));
+  byId('metrics-repo-clear').disabled = !available.some(path => customRepos.has(repoKey(path)));
+}
+
+function renderScope(replaceOptions = true) {
+  const batch = currentBatch();
+  const available = availableRepos(batch);
+  const existing = new Set(batch.reports.map(report => repoKey(report.repository)));
+  const mode = scopeMode();
+  byId('metrics-single-picker').hidden = mode !== 'single';
+  byId('metrics-repo-picker').hidden = mode !== 'custom';
+  let selected;
+  if (mode === 'single') {
+    if (!available.some(path => path === activeSingleRepo)) {
+      activeSingleRepo = available.find(path => repoKey(path) === repoKey(activeSingleRepo)) ??
+        batch.reports[0]?.repository ?? available[0] ?? '';
+    }
+    reportSelect.replaceChildren(...available.map(path => new Option(
+      `${path}${existing.has(repoKey(path)) ? '' : ' · 暂无报告'}`, path)));
+    if (!available.length) reportSelect.add(new Option('暂无可选仓库', ''));
+    reportSelect.disabled = !available.length;
+    reportSelect.value = activeSingleRepo;
+    selected = activeSingleRepo ? [activeSingleRepo] : [];
+  } else if (mode === 'custom') {
+    if (!customInitialized) {
+      batch.reports.forEach(report => customRepos.add(repoKey(report.repository)));
+      customInitialized = true;
+    }
+    renderRepoPicker(batch, available, replaceOptions);
+    selected = available.filter(path => customRepos.has(repoKey(path)));
+  } else {
+    selected = enabledRepos.length ? enabledRepos : available;
+  }
+  const visibleReports = selected.filter(path => existing.has(repoKey(path))).length;
+  byId('metrics-scope-summary').textContent = `已选 ${selected.length} 个仓库 · ${visibleReports} 个有报告`;
+  renderReport(selected, batch);
 }
 
 function openFinding(finding) {
-  detail.innerHTML = `<div class="dialog-heading"><div><p>${escape(activeReport.repository)}</p>
-    <h2 id="metrics-detail-title">PR #${finding.pr} · 检视意见</h2></div>
+  detail.innerHTML = `<div class="dialog-heading"><div><p>${escape(finding.repository)}</p>
+    <h2 id="metrics-detail-title">PR #${finding.pr} · ${finding.candidate ? 'Diff 候选' : '检视意见'}</h2></div>
     <form method="dialog"><button class="close-button" aria-label="关闭">×</button></form></div>
     <div class="dialog-body metrics-detail-body">
       <p>${badge(states[finding.state])} ${badge(adoptionLabel(finding))}</p>
-      <h3>判定理由</h3><p>${escape(finding.rationale || '暂无判定理由。')}</p>
+      <h3>判定理由</h3><p>${escape(finding.rationale || (finding.candidate ? '该评论待分类和去重。' : '暂无判定理由。'))}</p>
       <h3>评论编号</h3><p><code>${finding.comment_keys.map(escape).join('、')}</code></p>
-      <p><a class="button button-primary" href="${prUrl(activeReport, finding)}" target="_blank" rel="noopener noreferrer">在 GitCode 查看 PR ↗</a></p>
+      <p><a class="button button-primary" href="${prUrl(finding)}" target="_blank" rel="noopener noreferrer">在 GitCode 查看 PR ↗</a></p>
       <h3>证据链接</h3>
       ${finding.evidence.length ? `<ul>${finding.evidence.map((reference, index) => {
         const link = evidenceUrl(reference);
@@ -299,10 +527,43 @@ function openFinding(finding) {
   detail.showModal();
 }
 
-reportSelect.addEventListener('change', () => renderReport(reports.find(report => reportKey(report) === reportSelect.value)));
+reportSelect.addEventListener('change', () => { activeSingleRepo = reportSelect.value; renderScope(); });
+modeSelect.addEventListener('change', () => renderScope());
+periodSelect.addEventListener('change', () => {
+  const batch = currentBatch();
+  if (!batch.window && batch.reports.length === 1) {
+    activeSingleRepo = batch.reports[0].repository;
+    setScopeMode('single');
+  }
+  renderScope();
+});
+repoSearch.addEventListener('input', () => {
+  const batch = currentBatch();
+  renderRepoPicker(batch, availableRepos(batch));
+});
+repoOptions.addEventListener('change', event => {
+  const input = event.target.closest('input[type="checkbox"]');
+  if (!input) return;
+  const key = repoKey(input.value);
+  if (input.checked) customRepos.add(key);
+  else customRepos.delete(key);
+  renderScope(false);
+});
+byId('metrics-repo-all').addEventListener('click', () => {
+  availableRepos(currentBatch()).forEach(path => customRepos.add(repoKey(path)));
+  renderScope();
+});
+byId('metrics-repo-clear').addEventListener('click', () => { customRepos.clear(); renderScope(); });
 findingsTable.addEventListener('click', event => {
   const button = event.target.closest('[data-finding]');
-  if (button) openFinding(activeReport.findings[Number(button.dataset.finding)]);
+  if (button) openFinding(detailRows[Number(button.dataset.finding)]);
+  const repoButton = event.target.closest('[data-single-repo]');
+  if (repoButton) {
+    activeSingleRepo = repoButton.dataset.singleRepo;
+    setScopeMode('single');
+    renderScope();
+    reportSelect.focus();
+  }
 });
 byId('metrics-import').addEventListener('click', () => byId('metrics-file').click());
 byId('metrics-file').addEventListener('change', async event => {
@@ -321,7 +582,11 @@ byId('metrics-file').addEventListener('change', async event => {
     } catch {
       saved = false;
     }
-    selectReports(reportKey(imported[0]));
+    if (imported.length === 1) {
+      setScopeMode('single');
+      activeSingleRepo = imported[0].repository;
+    }
+    renderPeriods(batchKey(imported[0]));
     notice(saved ? `已导入 ${imported.length} 份报告，保存在当前浏览器。` : '报告已打开，浏览器未能保存导入记录。', !saved);
   } catch (error) {
     notice(error instanceof SyntaxError ? '文件内容不是有效的 JSON。' : error.message, true);
@@ -331,23 +596,33 @@ byId('metrics-file').addEventListener('change', async event => {
 });
 
 byId('metrics-export').addEventListener('click', () => {
-  const blob = new Blob([JSON.stringify({ version: 1, reports: [activeReport] }, null, 2)], { type: 'application/json' });
+  const blob = new Blob([JSON.stringify({ version: 1, reports: activeReports }, null, 2)], { type: 'application/json' });
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = `${activeReport.repository.split('/').at(-1)}-review-metrics.json`;
+  const name = activeReports.length === 1 ? activeReports[0].repository.split('/').at(-1) : 'cangjie';
+  link.download = `${name}-review-metrics.json`;
   link.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
 async function initialize() {
   let bundled = [];
-  try {
-    const response = await fetch('./review-metrics.json');
-    if (!response.ok) throw new Error();
-    bundled = readReports(await response.json());
-  } catch {
+  const getJson = async path => {
+    const response = await fetch(path);
+    if (!response.ok) throw new Error('读取失败');
+    return response.json();
+  };
+  const [reportsResult, settingsResult] = await Promise.allSettled([
+    getJson('./review-metrics.json').then(readReports), getJson('./snapshot.json'),
+  ]);
+  if (reportsResult.status === 'fulfilled') bundled = reportsResult.value;
+  else {
     notice('站点报告未能加载，可从本地导入报告。', true);
+  }
+  if (settingsResult.status === 'fulfilled' && Array.isArray(settingsResult.value?.repositories)) {
+    enabledRepos = [...new Map(settingsResult.value.repositories.filter(row => row?.aiReview === true && validPath(row.path))
+      .map(({ path }) => [repoKey(path), path])).values()].sort((a, b) => a.localeCompare(b));
   }
   try {
     const local = localStorage.getItem(storageKey);
@@ -356,8 +631,8 @@ async function initialize() {
     reports = bundled;
     notice('浏览器保存的报告未能加载，可重新导入。', true);
   }
-  const preferredRepo = new URLSearchParams(location.search).get('repo');
-  selectReports(null, preferredRepo);
+  if (linkedRepo) setScopeMode('single');
+  renderPeriods();
   byId('metrics-import').disabled = false;
 }
 
