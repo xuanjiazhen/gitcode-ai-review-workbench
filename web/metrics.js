@@ -25,6 +25,8 @@ const dateFormat = new Intl.DateTimeFormat('zh-CN', {
 });
 const percentFormat = new Intl.NumberFormat('zh-CN', { style: 'percent', maximumFractionDigits: 1 });
 const dayFormat = new Intl.DateTimeFormat('zh-CN', { dateStyle: 'medium', timeZone: 'Asia/Shanghai' });
+const shortDayFormat = new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric', timeZone: 'Asia/Shanghai' });
+const yearFormat = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', timeZone: 'Asia/Shanghai' });
 const formatCount = new Intl.NumberFormat('zh-CN');
 const repoKey = value => value.toLowerCase();
 const validPath = value => typeof value === 'string' && /^[\w.-]+\/[\w.-]+$/.test(value) &&
@@ -369,23 +371,23 @@ function renderReport(selected, batch, scopeKnown) {
         ? card('已解决的 Diff 候选', rawResolved, `${rawUnresolved} 条未解决，${report.finding_count} 条已分类为独立意见`)
         : card('已分类独立意见', report.finding_count, hint)}
       ${card('最终采纳率', final, '完全采纳 ÷ 全部已解决', true)}
-      ${card('采纳判定覆盖率', ratio(report.adoption_assessment_coverage), `${decided} / ${report.resolved} 条已解决意见已判定`)}
+      ${card('采纳判定覆盖率', ratio(report.adoption_assessment_coverage),
+        report.resolved ? `${decided} / ${report.resolved} 条已解决意见已判定` : '暂无已分类且已解决的意见')}
     </div>
     <div class="metrics-panels">
       <section class="metrics-panel">
         <h2>已解决意见的采纳分布</h2>
-        <dl class="status-list">
+        ${report.resolved ? `<dl class="status-list">
           <div><dt>完全采纳</dt><dd>${report.resolved_full}</dd></div>
           <div><dt>部分采纳</dt><dd>${report.resolved_partial}</dd></div>
           <div><dt>未采纳</dt><dd>${report.resolved_not_adopted}</dd></div>
           <div><dt>待判定</dt><dd>${report.resolved_adoption_unknown}</dd></div>
-        </dl>
-        <p>${boundLabel} <strong>${bound}</strong></p>
+        </dl><p>${boundLabel} <strong>${bound}</strong></p>`
+          : '<p>暂无可计算采纳分布的已解决独立意见。</p>'}
       </section>
       <section class="metrics-panel">
         <h2>统计范围</h2>
         <p>${report.all_bot_comment_count} 条 Bot 评论中，${report.diff_comment_count} 条为文件 Diff 评论，${report.discussion_comment_count} 条为讨论区评论。采纳率使用已解决的独立 Diff 意见。</p>
-        ${candidateRows.length ? `<p>待分类候选中有 ${candidateRows.length - rawResolved - rawUnresolved} 条解决状态未知。</p>` : ''}
         ${pending.length ? `<ul class="metrics-pending">${pending.map(label => `<li>${label}</li>`).join('')}</ul>` : ''}
         ${report.resolved ? `<progress class="metrics-progress" max="${report.resolved}" value="${decided}" aria-label="采纳判定覆盖"></progress><small>${decided} / ${report.resolved} 已判定</small>` : ''}
       </section>
@@ -422,6 +424,13 @@ function batchKey(report) {
     : reportKey(report);
 }
 
+function windowLabel(scope) {
+  const start = new Date(scope.created_after);
+  const end = new Date(Date.parse(scope.created_before) - 1);
+  const endLabel = yearFormat.format(start) === yearFormat.format(end) ? shortDayFormat.format(end) : dayFormat.format(end);
+  return `${dayFormat.format(start)} 至 ${endLabel}`;
+}
+
 function batches() {
   const groups = new Map();
   for (const report of reports) {
@@ -436,7 +445,7 @@ function batches() {
     const first = list[0];
     const scope = first.scope;
     const label = scope.created_after
-      ? `PR 创建于 ${dayFormat.format(new Date(scope.created_after))} 至 ${dayFormat.format(new Date(Date.parse(scope.created_before) - 1))}`
+      ? windowLabel(scope)
       : `${first.repository.split('/').at(-1)} · ${scope.type === 'repository' ? '全仓快照' : '指定 PR'} · ${dateLabel(first.observed_at)}${first.assessment_version ? ` · ${first.assessment_version}` : ''}`;
     return { id, label, reports: list, window: !!scope.created_after };
   }).sort((a, b) => Number(b.window) - Number(a.window));
