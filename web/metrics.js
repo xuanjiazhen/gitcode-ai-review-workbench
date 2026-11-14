@@ -183,11 +183,12 @@ function prUrl(report, finding) {
   return `https://gitcode.com/${report.repository}/pull/${finding.pr}`;
 }
 
-function renderReport(report) {
+function renderReport(report, missingRepo) {
   activeReport = report;
   byId('metrics-export').disabled = !report;
   if (!report) {
-    findingsTable.innerHTML = '<section class="metrics-panel empty"><h2>暂无统计报告</h2><p>从本地统计工具导出报告，再选择「导入报告」。</p></section>';
+    const title = missingRepo ? `${escape(missingRepo)} 暂无统计报告` : '暂无统计报告';
+    findingsTable.innerHTML = `<section class="metrics-panel empty"><h2>${title}</h2><p>从本地统计工具导出报告，再选择「导入报告」。</p></section>`;
     return;
   }
   const decided = report.resolved - report.resolved_adoption_unknown;
@@ -264,10 +265,17 @@ function selectReports(preferredKey, preferredRepo) {
     const version = report.assessment_version ? ` · ${report.assessment_version}` : '';
     reportSelect.add(new Option(`${report.repository} · ${dateLabel(report.observed_at)} · ${scope}${version}`, reportKey(report)));
   }
+  if (preferredRepo && !reports.some(report => report.repository.toLowerCase() === preferredRepo.toLowerCase())) {
+    reportSelect.add(new Option('选择其他仓库报告', ''), 0);
+    reportSelect.value = '';
+    reportSelect.disabled = !reports.length;
+    renderReport(undefined, preferredRepo);
+    return;
+  }
   if (!reports.length) reportSelect.add(new Option('暂无报告', ''));
   reportSelect.disabled = !reports.length;
   const selected = reports.find(report => reportKey(report) === preferredKey) ??
-    reports.find(report => report.repository.toLowerCase() === preferredRepo) ?? reports[0];
+    reports.find(report => report.repository.toLowerCase() === preferredRepo?.toLowerCase()) ?? reports[0];
   if (selected) reportSelect.value = reportKey(selected);
   renderReport(selected);
 }
@@ -348,7 +356,7 @@ async function initialize() {
     reports = bundled;
     notice('浏览器保存的报告未能加载，可重新导入。', true);
   }
-  const preferredRepo = new URLSearchParams(location.search).get('repo')?.toLowerCase();
+  const preferredRepo = new URLSearchParams(location.search).get('repo');
   selectReports(null, preferredRepo);
   byId('metrics-import').disabled = false;
 }
