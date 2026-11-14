@@ -35,6 +35,7 @@ const linkedRepo = validPath(query.get('repo')) ? query.get('repo') : '';
 const pageSize = 50;
 let reports = [];
 let enabledRepos = [];
+let organizationKnown = false;
 let activeReports = [];
 let detailRows = [];
 let tablePage = 0;
@@ -251,13 +252,13 @@ function prUrl(finding) {
   return `https://gitcode.com/${finding.repository}/pull/${finding.pr}`;
 }
 
-function aggregate(selected, batch) {
+function aggregate(selected, batch, scopeKnown) {
   const selectedKeys = new Set(selected.map(repoKey));
   const members = new Map(batch.reports.filter(report => selectedKeys.has(repoKey(report.repository)))
     .map(report => [repoKey(report.repository), report]));
   const rows = [...members.values()];
   const summed = Object.fromEntries(counts.map(key => [key, rows.reduce((total, row) => total + row[key], 0)]));
-  const fullCoverage = !!selected.length && rows.length === selected.length && rows.every(row => row.collection_complete);
+  const fullCoverage = scopeKnown && !!selected.length && rows.length === selected.length && rows.every(row => row.collection_complete);
   const classificationReady = fullCoverage && rows.every(row => row.classification_complete_for_scope);
   const adoptionReady = classificationReady && rows.every(row => row.publishable_for_collected_scope);
   const stats = {
@@ -317,8 +318,8 @@ function repositoryTable(selected, members) {
   </section>`;
 }
 
-function renderReport(selected, batch) {
-  const { stats: report, rows, members } = aggregate(selected, batch);
+function renderReport(selected, batch, scopeKnown) {
+  const { stats: report, rows, members } = aggregate(selected, batch, scopeKnown);
   activeReports = rows;
   byId('metrics-export').disabled = !rows.length;
   if (!selected.length) {
@@ -350,7 +351,8 @@ function renderReport(selected, batch) {
   const boundLabel = report.classification_complete_for_scope ? '已确认采纳下限' : '当前已核实意见内确认占比';
   const bound = report.resolved ? `${report.adoption_numerator} / ${report.resolved} · ${ratio(report.adoption_rate)}` : '暂无数据';
   const pending = [
-    [!report.collection_complete, '所选范围有仓库或 PR 数据缺失'],
+    [!scopeKnown, '组织范围待核实，目前显示本批次已有报告的仓库'],
+    [scopeKnown && !report.collection_complete, '所选范围有仓库或 PR 数据缺失'],
     [report.scope_pending_count, `${report.scope_pending_count} 条评论类型待核实`],
     [report.unclassified_candidate_count, `${report.unclassified_candidate_count} 条 Diff 评论待分类`],
     [report.state_unknown, `${report.state_unknown} 条意见的解决状态未知`],
@@ -501,11 +503,12 @@ function renderScope(replaceOptions = true) {
     renderRepoPicker(batch, available, replaceOptions);
     selected = available.filter(path => customRepos.has(repoKey(path)));
   } else {
-    selected = enabledRepos.length ? enabledRepos : available;
+    selected = organizationKnown ? enabledRepos : available;
   }
   const visibleReports = selected.filter(path => existing.has(repoKey(path))).length;
-  byId('metrics-scope-summary').textContent = `已选 ${selected.length} 个仓库 · ${visibleReports} 个有报告`;
-  renderReport(selected, batch);
+  const scopeKnown = mode !== 'overview' || organizationKnown;
+  byId('metrics-scope-summary').textContent = `已选 ${selected.length} 个仓库 · ${visibleReports} 个有报告${scopeKnown ? '' : ' · 组织清单待核实'}`;
+  renderReport(selected, batch, scopeKnown);
 }
 
 function openFinding(finding) {
@@ -529,14 +532,7 @@ function openFinding(finding) {
 
 reportSelect.addEventListener('change', () => { activeSingleRepo = reportSelect.value; renderScope(); });
 modeSelect.addEventListener('change', () => renderScope());
-periodSelect.addEventListener('change', () => {
-  const batch = currentBatch();
-  if (!batch.window && batch.reports.length === 1) {
-    activeSingleRepo = batch.reports[0].repository;
-    setScopeMode('single');
-  }
-  renderScope();
-});
+periodSelect.addEventListener('change', () => renderScope());
 repoSearch.addEventListener('input', () => {
   const batch = currentBatch();
   renderRepoPicker(batch, availableRepos(batch));
@@ -613,16 +609,30 @@ async function initialize() {
     if (!response.ok) throw new Error('读取失败');
     return response.json();
   };
-  const [reportsResult, settingsResult] = await Promise.allSettled([
-    getJson('./review-metrics.json').then(readReports), getJson('./snapshot.json'),
+  const [reportsResult, settingsResult, inventoryResult] = await Promise.allSettled([
+    getJson('./review-metrics.json').then(readReports), getJson('./snapshot.json'), getJson('./inventory.json'),
   ]);
   if (reportsResult.status === 'fulfilled') bundled = reportsResult.value;
   else {
     notice('站点报告未能加载，可从本地导入报告。', true);
   }
-  if (settingsResult.status === 'fulfilled' && Array.isArray(settingsResult.value?.repositories)) {
-    enabledRepos = [...new Map(settingsResult.value.repositories.filter(row => row?.aiReview === true && validPath(row.path))
-      .map(({ path }) => [repoKey(path), path])).values()].sort((a, b) => a.localeCompare(b));
+  const settings = new Map();
+  for (const value of [settingsResult.value, readLocalSettings()]) {
+    if (value?.version !== 1 || value.organization !== 'Cangjie' || !Array.isArray(value.repositories)) continue;
+    for (const row of value.repositories) {
+      if (!validPath(row?.path) || typeof row.aiReview !== 'boolean') continue;
+      const key = repoKey(row.path);
+      const previous = settings.get(key);
+      const time = validDate(row.checkedAt) ? Date.parse(row.checkedAt) : 0;
+      if (!previous || time >= previous.time) settings.set(key, { ...row, time });
+    }
+  }
+  const inventory = inventoryResult.value?.repositories;
+  organizationKnown = Array.isArray(inventory) && inventory.length > 0 &&
+    inventory.every(row => validPath(row?.path) && settings.has(repoKey(row.path)));
+  if (organizationKnown) {
+    enabledRepos = inventory.map(({ path }) => path).filter(path => settings.get(repoKey(path)).aiReview)
+      .sort((a, b) => a.localeCompare(b));
   }
   try {
     const local = localStorage.getItem(storageKey);
@@ -634,6 +644,11 @@ async function initialize() {
   if (linkedRepo) setScopeMode('single');
   renderPeriods();
   byId('metrics-import').disabled = false;
+}
+
+function readLocalSettings() {
+  try { return JSON.parse(localStorage.getItem('cangjie-review-workbench:v1')); }
+  catch { return null; }
 }
 
 initialize();

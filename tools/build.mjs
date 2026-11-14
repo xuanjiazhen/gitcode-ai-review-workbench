@@ -30,7 +30,9 @@ await mkdir(dist, { recursive: true });
 await cp(at('web/'), dist, { recursive: true });
 await copyFile(at('tools/collector.mjs'), at('dist/collector.js'));
 await copyFile(at('data/inventory.json'), at('dist/inventory.json'));
-await copyFile(at('data/snapshot.json'), at('dist/snapshot.json'));
-await writeFile(at('dist/review-metrics.json'), metricSource);
+await writeFile(at('dist/snapshot.json'), publicBuild
+  ? JSON.stringify({ version: 1, organization: inventory.organization, repositories: [] })
+  : await readFile(at('data/snapshot.json'), 'utf8'));
+await writeFile(at('dist/review-metrics.json'), publicBuild ? '{"version":1,"reports":[]}' : metricSource);
 await writeFile(at('dist/.nojekyll'), '');
 console.log(`Built dist/ with ${inventory.total} public repositories and ${snapshot.repositories.length} audit records.`);
