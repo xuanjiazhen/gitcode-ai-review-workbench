@@ -155,11 +155,13 @@ export async function collectGitCodeAudit({ token, onProgress = () => {}, reques
       get('/api/v2/namespaces/review-skills', params),
     ]);
     if (config.invalidToken || skillList.invalidToken) throw new Error('GitCode 登录已失效，请重新登录后重试。');
-    const review = config.body?.data?.config?.base_config?.code_review;
+    const reviewConfig = config.body?.config ?? config.body?.data?.config;
+    const review = reviewConfig?.base_config?.code_review;
     const aiReview = typeof review?.disable === 'boolean' ? !review.disable : null;
     const auto = review?.pull_request_opened?.code_review;
     const autoReview = typeof auto === 'boolean' ? auto : null;
-    const skills = normalizeSkills(skillList.body?.data?.items, project.settingsUrl);
+    const skillItems = skillList.body?.items ?? skillList.body?.data?.items;
+    const skills = normalizeSkills(skillItems, project.settingsUrl);
     const notes = [];
     if (aiReview === null || autoReview === null) notes.push(`基础配置：${config.error ?? '状态字段缺失'}`);
     if (skills === null) notes.push(`Skill 列表：${skillList.error ?? '数据缺失或返回格式异常'}`);
