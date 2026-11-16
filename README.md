@@ -25,7 +25,7 @@
 python tools/collect-metrics.py --settings private/review-settings.json --checkpoint-dir private/metrics-run --output private/review-metrics.json
 ```
 
-采集报告记录 Bot 文件 Diff 评论候选、候选解决状态和 PR 读取覆盖。独立意见及采纳率来自后续分类和证据判定。组织或选定仓库的采纳率用各仓分子和分母加总，有待核实项时显示「待判定」。
+采集报告记录 Bot 文件 Diff 评论候选、候选解决状态和 PR 读取覆盖。组织或选定仓库的采纳率使用各仓分子和分母加总。
 
 已有判定可从原统计工具导出。Windows 可双击 `gitcode-review-metrics/start-local.bat` 打开原工具。下面的命令使用只读模式导出 SQLite 中的结果。
 
@@ -37,7 +37,9 @@ python tools/export-metrics.py --db ../gitcode-review-metrics/local-app.sqlite -
 
 把生成的 JSON 导入统计页即可查看。浏览器保存导入的报告，支持再导出。组织内部报告可随私有部署放在 `data/review-metrics.json`。GitHub Pages 只发布界面和导入功能。
 
-最终采纳率为「完全采纳 ÷ 全部已解决的独立 Diff 意见」。范围、分类或采纳仍待核实的报告会标出待核实项。
+- 「已确认采纳率」的分子是有证据确认完全采纳的已解决独立 Diff 意见。分母包括全部已解决的独立 Diff 意见，以及暂计的已解决 Diff 候选。部分采纳、未采纳和采纳待判定的已解决独立意见只进分母。待分类的候选先按原始评论计数，完成分类后按独立意见重新计算。
+- 讨论区评论、已排除的 Diff 评论、未解决或解决状态未知的意见和候选，以及评论类型待核实的记录不进分母。无分母样本按展示约定显示 0%。
+- 「最终采纳率」沿用原工具口径，等范围采集、去重和采纳判定完成后，计算完全采纳数除以已解决独立 Diff 意见数。
 
 ## 本地运行
 

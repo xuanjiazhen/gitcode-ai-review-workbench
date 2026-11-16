@@ -192,6 +192,15 @@
 .metrics-finding-tools select { padding: 5px; border: 1px solid var(--edge); border-radius: 6px; color: var(--ink); background: var(--paper); }
 .metrics-finding-tools .search { margin-left: auto; }
 .metrics-pending { margin: 0 0 8px; padding-left: 18px; }
+.metrics-adoption-effect { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.adoption-formula { margin: 12px 0; border-top: 1px solid var(--edge); }
+.adoption-formula > div { display: grid; grid-template-columns: 88px 1fr; gap: 10px; padding: 9px 0; border-bottom: 1px solid var(--edge); }
+.adoption-formula dt { font-weight: 650; }
+.adoption-formula dt strong { margin-left: 4px; color: #17584a; font-variant-numeric: tabular-nums; }
+.adoption-formula dd { margin: 0; color: var(--muted); }
+.adoption-rules summary { min-height: 32px; line-height: 32px; color: #17584a; font-weight: 650; cursor: pointer; }
+.adoption-rules details ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
+.adoption-rules details li { margin-bottom: 3px; }
 .metrics-detail-body { overflow-wrap: anywhere; }
 .metrics-detail-body a { color: #365d27; text-decoration: underline; text-underline-offset: 3px; }
 .metrics-reference { white-space: pre-wrap; }

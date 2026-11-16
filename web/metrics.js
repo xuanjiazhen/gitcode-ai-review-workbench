@@ -137,6 +137,7 @@ function normalizeReport(value) {
   const ids = new Set();
   const findingStates = { resolved: 0, unresolved: 0, unknown: 0 };
   const resolvedVerdicts = { full: 0, partial: 0, not_adopted: 0, unknown: 0 };
+  const findingCommentKeys = new Set();
   const findings = value.findings.map(finding => {
     if (typeof finding?.id !== 'string' || !finding.id || ids.has(finding.id) || !prs.has(finding.pr) ||
       !Object.hasOwn(states, finding.state) || !Object.hasOwn(decisions, finding.adoption) ||
@@ -146,6 +147,7 @@ function normalizeReport(value) {
       throw new Error('报告包含无效的意见或证据记录。');
     }
     ids.add(finding.id);
+    finding.comment_keys.forEach(key => findingCommentKeys.add(key));
     findingStates[finding.state]++;
     if (finding.state === 'resolved') resolvedVerdicts[finding.adoption]++;
     return {
@@ -165,7 +167,9 @@ function normalizeReport(value) {
     adoption_assessment_coverage: denominator ? (denominator - value.resolved_adoption_unknown) / denominator : null,
     final_adoption_rate: denominator && canPublish ? numerator / denominator : null,
   };
-  if (value.finding_count !== findings.length || value.resolved !== findingStates.resolved ||
+  if (findingCommentKeys.size + value.unclassified_candidate_count > value.diff_comment_count ||
+    candidates?.some(candidate => findingCommentKeys.has(candidate.id)) ||
+    value.finding_count !== findings.length || value.resolved !== findingStates.resolved ||
     value.unresolved !== findingStates.unresolved || value.state_unknown !== findingStates.unknown ||
     value.all_bot_comment_count !== value.diff_comment_count + value.discussion_comment_count + value.scope_pending_count ||
     value.resolved_full !== resolvedVerdicts.full || value.resolved_partial !== resolvedVerdicts.partial ||
@@ -226,6 +230,13 @@ function adoptionLabel(finding) {
   return finding.state === 'resolved' ? decisions[finding.adoption] : ['暂不计入', ''];
 }
 
+function adoptionEffect(finding) {
+  if (finding.state !== 'resolved') return '不计入';
+  if (finding.candidate) return '暂计分母';
+  if (finding.adoption === 'full') return '分子和分母';
+  return '仅计分母';
+}
+
 function renderTable(reset = true) {
   if (reset) tablePage = 0;
   const state = byId('finding-state').value;
@@ -241,7 +252,7 @@ function renderTable(reset = true) {
     ? filtered.slice(start, end).map(({ finding, index }) => `<tr>
       <td><a href="${prUrl(finding)}" target="_blank" rel="noopener noreferrer">#${finding.pr} ↗</a><small>${escape(finding.repository.split('/').at(-1))}</small></td>
       <td class="metrics-finding-title">${escape(finding.candidate ? `Diff 评论 ${finding.id.split(':')[1]}` : finding.rationale || finding.id)}</td>
-      <td>${badge(states[finding.state])}</td><td>${badge(adoptionLabel(finding))}</td>
+      <td>${badge(states[finding.state])}</td><td>${badge(adoptionLabel(finding))}<small class="metrics-adoption-effect">${adoptionEffect(finding)}</small></td>
       <td class="row-end"><button class="row-open" data-finding="${index}" aria-label="查看 PR ${finding.pr} 的意见详情">↗</button></td>
     </tr>`).join('')
     : '<tr><td class="empty" colspan="5">没有符合条件的意见。</td></tr>';
@@ -252,6 +263,29 @@ function renderTable(reset = true) {
 
 function prUrl(finding) {
   return `https://gitcode.com/${finding.repository}/pull/${finding.pr}`;
+}
+
+function adoptionBasis(stats, rows) {
+  const candidates = rows.flatMap(row => row.candidates ?? []);
+  const resolvedCandidates = candidates.filter(row => row.state === 'resolved').length;
+  const unresolvedCandidates = candidates.filter(row => row.state === 'unresolved').length;
+  const missingCandidateStates = stats.unclassified_candidate_count - candidates.length;
+  const mapped = rows.reduce((total, row) =>
+    total + new Set(row.findings.flatMap(finding => finding.comment_keys)).size, 0);
+  const denominator = stats.resolved + resolvedCandidates;
+  return {
+    numerator: stats.resolved_full, denominator,
+    rate: denominator ? stats.resolved_full / denominator : 0,
+    coverage: denominator ? (stats.resolved - stats.resolved_adoption_unknown) / denominator : null,
+    resolvedCandidates, unresolvedCandidates, mapped, missingCandidateStates,
+    unknownCandidates: candidates.length - resolvedCandidates - unresolvedCandidates,
+    excludedDiff: stats.diff_comment_count - mapped - stats.unclassified_candidate_count,
+  };
+}
+
+function adoptionStatus(report, basis) {
+  if (!basis.denominator) return '暂无分母样本';
+  return report.final_adoption_rate === null ? '暂计' : '判定完成';
 }
 
 function aggregate(selected, batch, scopeKnown) {
@@ -267,8 +301,6 @@ function aggregate(selected, batch, scopeKnown) {
     ...summed, collection_complete: fullCoverage, classification_complete_for_scope: classificationReady,
     publishable_for_collected_scope: adoptionReady,
     final_adoption_rate: summed.resolved && adoptionReady ? summed.resolved_full / summed.resolved : null,
-    adoption_rate: summed.resolved ? summed.resolved_full / summed.resolved : null,
-    adoption_assessment_coverage: summed.resolved ? (summed.resolved - summed.resolved_adoption_unknown) / summed.resolved : null,
   };
   return { stats, rows, members };
 }
@@ -302,21 +334,48 @@ function repositoryTable(selected, members) {
     <div class="section-heading"><div><h2 id="repo-results-title">仓库明细</h2></div></div>
     <div class="table-card"><div class="table-scroll" tabindex="0" aria-label="仓库统计表格，可横向滚动">
       <table>
-        <thead><tr><th scope="col">仓库</th><th scope="col">采集状态</th><th scope="col">已读取 PR</th><th scope="col">Bot Diff 评论</th><th scope="col">已解决候选</th><th scope="col">待分类</th><th scope="col">最终采纳率</th></tr></thead>
+        <thead><tr><th scope="col">仓库</th><th scope="col">采集状态</th><th scope="col">已读取 PR</th><th scope="col">Bot Diff 评论</th><th scope="col">已解决候选</th><th scope="col">待分类</th><th scope="col">已确认采纳率</th></tr></thead>
         <tbody>${ordered.map(path => {
           const report = members.get(repoKey(path));
           const collected = report?.scope.collected_prs ?? (report?.collection_complete ? report.scope.prs.length : null);
-          const rawResolved = report?.candidates?.filter(item => item.state === 'resolved').length;
-          const final = !report ? '—' : report.final_adoption_rate !== null ? ratio(report.final_adoption_rate)
-            : report.publishable_for_collected_scope ? '暂无数据' : '待判定';
+          const basis = report ? adoptionBasis(report, [report]) : null;
+          const rawResolved = report?.candidates ? basis.resolvedCandidates : null;
+          const adoption = basis ? `<strong>${ratio(basis.rate)}</strong>
+            <small class="metrics-adoption-effect">${basis.numerator} / ${basis.denominator} · ${adoptionStatus(report, basis)}</small>` : '暂无报告';
           const state = !report ? ['暂无报告', ''] : report.collection_complete ? ['已完成', 'on'] : ['部分覆盖', 'off'];
           return `<tr><th scope="row"><button type="button" class="metrics-repo-link" data-single-repo="${escape(path)}">${escape(path.split('/').at(-1))} ↗</button></th>
             <td>${badge(state)}</td><td>${collected === null ? '—' : collected}${report ? ` / ${report.scope.prs.length}` : ''}</td>
             <td>${report ? `<span class="metrics-volume"><meter min="0" max="${peak}" value="${report.diff_comment_count}" aria-hidden="true"></meter>${report.diff_comment_count}</span>` : '—'}</td>
-            <td>${rawResolved ?? '—'}</td><td>${report?.unclassified_candidate_count ?? '—'}</td><td>${final}</td></tr>`;
+            <td>${rawResolved ?? '—'}</td><td>${report?.unclassified_candidate_count ?? '—'}</td><td>${adoption}</td></tr>`;
         }).join('')}</tbody>
       </table>
     </div></div>
+  </section>`;
+}
+
+function adoptionPanel(report, basis) {
+  const excluded = [
+    [report.discussion_comment_count, '讨论区评论，包括其中的摘要和说明'],
+    [basis.excludedDiff, '已排除的 Diff 评论'],
+    [report.unresolved, '未解决的独立意见'],
+    [report.state_unknown, '解决状态未知的独立意见'],
+    [basis.unresolvedCandidates, '未解决的 Diff 候选'],
+    [basis.unknownCandidates, '解决状态未知的 Diff 候选'],
+    [basis.missingCandidateStates, '缺少逐条解决状态的 Diff 候选'],
+    [report.scope_pending_count, '类型待核实的 Bot 评论'],
+  ];
+  return `<section class="metrics-panel adoption-rules" aria-labelledby="adoption-rules-title">
+    <h2 id="adoption-rules-title">采纳率怎么算</h2>
+    <p>本批次读取 ${report.all_bot_comment_count} 条 Bot 评论，其中 ${report.diff_comment_count} 条是文件 Diff 评论，${report.discussion_comment_count} 条在讨论区${report.scope_pending_count ? `，${report.scope_pending_count} 条类型待核实` : ''}。</p>
+    <dl class="adoption-formula">
+      <div><dt>分子 <strong>${basis.numerator}</strong></dt><dd>有证据确认完全采纳的已解决独立 Diff 意见。仅标记已解决不构成采纳证据。</dd></div>
+      <div><dt>分母 <strong>${basis.denominator}</strong></dt><dd>${report.resolved} 条已解决独立意见，加 ${basis.resolvedCandidates} 条暂计的已解决 Diff 候选。独立意见包括完全采纳 ${report.resolved_full}、部分采纳 ${report.resolved_partial}、未采纳 ${report.resolved_not_adopted}、采纳待判定 ${report.resolved_adoption_unknown}。</dd></div>
+    </dl>
+    <p>${basis.mapped} 条 Diff 评论已映射为 ${report.finding_count} 条独立意见。重复评论按独立意见计数，待分类候选暂按评论计数，分类后会重新计算。</p>
+    <details${report.final_adoption_rate === null ? ' open' : ''}>
+      <summary>不计入分子或分母</summary>
+      <ul>${excluded.map(([count, label]) => `<li>${label} <strong>${count}</strong></li>`).join('')}</ul>
+    </details>
   </section>`;
 }
 
@@ -342,16 +401,13 @@ function renderReport(selected, batch, scopeKnown) {
       comment_keys: [candidate.id], evidence: [], rationale: '' })),
   ]).sort((a, b) => a.repository.localeCompare(b.repository) || b.pr - a.pr || a.id.localeCompare(b.id));
   const candidateRows = detailRows.filter(item => item.candidate);
-  const rawResolved = candidateRows.filter(row => row.state === 'resolved').length;
-  const rawUnresolved = candidateRows.filter(row => row.state === 'unresolved').length;
+  const basis = adoptionBasis(report, rows);
   const newest = rows.reduce((latest, row) => Date.parse(row.observed_at) > Date.parse(latest) ? row.observed_at : latest, rows[0].observed_at);
   const decided = report.resolved - report.resolved_adoption_unknown;
   const final = report.final_adoption_rate !== null ? ratio(report.final_adoption_rate)
     : report.publishable_for_collected_scope ? '暂无数据' : '待判定';
   const hint = report.unclassified_candidate_count ? `${report.unclassified_candidate_count} 条 Diff 评论待分类`
     : `${report.unresolved} 条未解决${report.state_unknown ? ` · ${report.state_unknown} 条状态未知` : ''}`;
-  const boundLabel = report.classification_complete_for_scope ? '已确认采纳下限' : '当前已核实意见内确认占比';
-  const bound = report.resolved ? `${report.adoption_numerator} / ${report.resolved} · ${ratio(report.adoption_rate)}` : '暂无数据';
   const pending = [
     [!scopeKnown, '组织范围待核实，目前显示本批次已有报告的仓库'],
     [scopeKnown && !report.collection_complete, '所选范围有仓库或 PR 数据缺失'],
@@ -368,28 +424,20 @@ function renderReport(selected, batch, scopeKnown) {
     <div class="metrics">
       ${card('Bot Diff 评论', report.diff_comment_count, `${report.discussion_comment_count} 条讨论区评论另计`)}
       ${candidateRows.length
-        ? card('已解决的 Diff 候选', rawResolved, `${rawUnresolved} 条未解决，${report.finding_count} 条已分类为独立意见`)
+        ? card('已解决的 Diff 候选', basis.resolvedCandidates, `${basis.unresolvedCandidates} 条未解决，${report.finding_count} 条已分类为独立意见`)
         : card('已分类独立意见', report.finding_count, hint)}
-      ${card('最终采纳率', final, '完全采纳 ÷ 全部已解决', true)}
-      ${card('采纳判定覆盖率', ratio(report.adoption_assessment_coverage),
-        report.resolved ? `${decided} / ${report.resolved} 条已解决意见已判定` : '暂无已分类且已解决的意见')}
+      ${card('已确认采纳率', ratio(basis.rate), `${basis.numerator} / ${basis.denominator} · ${adoptionStatus(report, basis)}`, true)}
+      ${card('采纳判定覆盖率', ratio(basis.coverage),
+        basis.denominator ? `${decided} / ${basis.denominator} 个分母样本已判定` : '暂无分母样本')}
     </div>
     <div class="metrics-panels">
+      ${adoptionPanel(report, basis)}
       <section class="metrics-panel">
-        <h2>已解决意见的采纳分布</h2>
-        ${report.resolved ? `<dl class="status-list">
-          <div><dt>完全采纳</dt><dd>${report.resolved_full}</dd></div>
-          <div><dt>部分采纳</dt><dd>${report.resolved_partial}</dd></div>
-          <div><dt>未采纳</dt><dd>${report.resolved_not_adopted}</dd></div>
-          <div><dt>待判定</dt><dd>${report.resolved_adoption_unknown}</dd></div>
-        </dl><p>${boundLabel} <strong>${bound}</strong></p>`
-          : '<p>暂无可计算采纳分布的已解决独立意见。</p>'}
-      </section>
-      <section class="metrics-panel">
-        <h2>统计范围</h2>
-        <p>${report.all_bot_comment_count} 条 Bot 评论中，${report.diff_comment_count} 条为文件 Diff 评论，${report.discussion_comment_count} 条为讨论区评论。采纳率使用已解决的独立 Diff 意见。</p>
+        <h2>判定进度</h2>
+        <p>最终采纳率 <strong>${final}</strong></p>
+        ${basis.denominator ? '' : '<p>分母为 0 时，当前值按展示约定显示 0%。</p>'}
         ${pending.length ? `<ul class="metrics-pending">${pending.map(label => `<li>${label}</li>`).join('')}</ul>` : ''}
-        ${report.resolved ? `<progress class="metrics-progress" max="${report.resolved}" value="${decided}" aria-label="采纳判定覆盖"></progress><small>${decided} / ${report.resolved} 已判定</small>` : ''}
+        ${basis.denominator ? `<progress class="metrics-progress" max="${basis.denominator}" value="${decided}" aria-label="采纳判定覆盖"></progress><small>${decided} / ${basis.denominator} 已判定</small>` : ''}
       </section>
     </div>
     ${repoTable}
@@ -526,6 +574,7 @@ function openFinding(finding) {
     <form method="dialog"><button class="close-button" aria-label="关闭">×</button></form></div>
     <div class="dialog-body metrics-detail-body">
       <p>${badge(states[finding.state])} ${badge(adoptionLabel(finding))}</p>
+      <p>采纳率计入方式 <strong>${adoptionEffect(finding)}</strong></p>
       <h3>判定理由</h3><p>${escape(finding.rationale || (finding.candidate ? '该评论待分类和去重。' : '暂无判定理由。'))}</p>
       <h3>评论编号</h3><p><code>${finding.comment_keys.map(escape).join('、')}</code></p>
       <p><a class="button button-primary" href="${prUrl(finding)}" target="_blank" rel="noopener noreferrer">在 GitCode 查看 PR ↗</a></p>
