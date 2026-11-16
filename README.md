@@ -23,10 +23,10 @@
 
 ## 检视统计
 
-打开「AI 检视统计」后，在标签范围内查看批次、单仓或自选多仓。每条记录对应一条 AI Bot 的文件 Diff 评论，可查看 PR、解决状态、采纳判定与证据链接。
+打开「AI 检视统计」后，在标签范围内查看批次、单仓或自选多仓。用「按周」或「按月」选择时段。分子与分母按同一个 PR 创建时段筛选，采用北京时间，周一至周日为一周。每条记录对应一条 AI Bot 的文件 Diff 评论，可查看 PR、解决状态、采纳判定与证据链接。
 
 - 分母是已合入 PR 中标为已解决的 Bot Diff 评论，每条评论按 ID 计一次。
-- 分子是分母中已有开发者明确确认有效或有合入修改证据落实核心意见的评论。开发者落实等效方案也可计入。已解决标记仅用于划定分母。等待核验的评论在采纳证据覆盖中单列。
+- 分子是分母中已有开发者明确确认有效或有合入修改证据落实核心意见的评论。开发者落实等效方案也可计入。已解决标记仅用于划定分母。等待核验的评论会在采纳率旁标记。
 - 未合入 PR、合入状态未知、已合入但未解决或解决状态未知的 Diff 评论单列展示。分母为零时，页面显示 `0%` 和 `0/0 · 暂无分母样本`。
 - 汇总时先加总各仓分子与分母，再计算比例。
 
@@ -36,7 +36,7 @@
 python tools/collect-metrics.py --tags private/repo-tags.json --settings private/review-settings.json --checkpoint-dir private/metrics-run --output private/review-metrics.json
 ```
 
-采集报告记录合入状态、评论解决状态和 PR 读取覆盖。人工核验可通过 `--adoption-evidence` 导入，每条判定绑定仓库、PR 与评论 ID、评论采集时间、理由和证据链接。已有断点可通过 `--pr-states` 使用另一次合入状态核实结果，报告保留各自的观测时间。
+报告中的逐条 Diff 评论记录 PR 创建时间、合入状态与评论解决状态。缺少可核实 PR 创建时间的记录可以在批次整体视图查看。人工核验可通过 `--adoption-evidence` 导入，每条判定绑定仓库、PR 与评论 ID、评论采集时间、理由和证据链接。已有断点可通过 `--pr-states` 使用另一次合入状态核实结果，报告保留各自的观测时间。
 
 已有判定可从原统计工具导出。Windows 可双击 `gitcode-review-metrics/start-local.bat` 打开原工具。下面的命令使用只读模式导出 SQLite 中的结果。
 
@@ -46,7 +46,7 @@ python tools/export-metrics.py --db ../gitcode-review-metrics/local-app.sqlite -
 
 也可通过 `--snapshot`、`--assessment` 和 `--config` 对现有 JSON 快照重新计算。省略这三个选项及 `--db` 时使用原工具随附的 `cangjie_docs` 全仓快照。若本地统计工具目录不是工作台的同级目录，可用 `--metrics-dir` 指定。
 
-把生成的 JSON 导入统计页即可查看。浏览器保存导入的报告，支持再导出。私有部署可以从 `data/review-metrics.json` 加载报告，从 `data/repo-tags.json` 加载初始标签。浏览器保存的标签变更适用于同一站点上的所有页面。
+把生成的 JSON 导入统计页即可查看。浏览器保存导入的报告，导出时使用当前选择的时段和仓库范围。私有部署可以从 `data/review-metrics.json` 加载报告，从 `data/repo-tags.json` 加载初始标签。浏览器保存的标签变更适用于同一站点上的所有页面。
 
 ## 本地运行
 

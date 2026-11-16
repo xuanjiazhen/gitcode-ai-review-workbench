@@ -142,7 +142,7 @@ def read_adoption_evidence(path):
 def project_adoption_comments(bundle, diff_comments, findings, pr_states, pr_observed_at, reviews):
     repository = bundle['repository'].casefold()
     comments_observed_at = bundle.get('pr_observations', {})
-    stored_pr_states = {row['number']: pull_state(row) for row in bundle.get('pulls', [])}
+    stored_pulls = {row['number']: row for row in bundle.get('pulls', [])}
     stored_pr_time = bundle.get('pr_state_observed_at', bundle.get('collection_started_at', bundle['observed_at']))
     supplied_pr_states = pr_states.get(repository, {})
     mapped = Counter(key for finding in findings for key in finding['comment_keys'])
@@ -152,7 +152,10 @@ def project_adoption_comments(bundle, diff_comments, findings, pr_states, pr_obs
     for key, source in sorted(diff_comments.items(), key=lambda item: (item[1]['pr'], int(item[0].split(':')[1]))):
         pr = source['pr']
         comment = source['comment']
-        pr_state = supplied_pr_states.get(pr, stored_pr_states.get(pr, 'unknown'))
+        pull = stored_pulls.get(pr, {})
+        pr_state = supplied_pr_states.get(pr, pull_state(pull))
+        created_at = pull.get('created_at')
+        pr_created_at = parse_time(created_at)
         pr_time = pr_observed_at if pr in supplied_pr_states else stored_pr_time if pr_state != 'unknown' else None
         observed = comments_observed_at.get(str(pr), bundle['observed_at'])
         resolved = comment.get('resolved')
@@ -174,14 +177,25 @@ def project_adoption_comments(bundle, diff_comments, findings, pr_states, pr_obs
 
         result.append({'id': key, 'pr': pr, 'comment_type': 'diff_comment', 'state': state,
                        'pr_state': pr_state, 'adoption': adoption, 'rationale': rationale, 'evidence': evidence,
+                       'pr_created_at': pr_created_at.isoformat() if pr_created_at else None,
+                       **({'pr_created_at_reason': 'missing' if created_at in (None, '') else 'invalid'}
+                          if pr_created_at is None else {}),
                        'comment_observed_at': observed,
                        **({'pr_state_observed_at': pr_time} if parse_time(pr_time) else {})})
     return result
 
 
-def adoption_report(report, adoption_comments, pr_observed_at=None):
+def adoption_report(report, adoption_comments, pr_observed_at=None, pulls=()):
     scope_fields = ('type', 'prs', 'created_after', 'created_before', 'collected_prs', 'failed_prs', 'bot_pr_count')
     scope = {key: report['scope'][key] for key in scope_fields if key in report['scope']}
+    numbers = set(scope['prs'])
+    dates = {}
+    for pull in pulls:
+        number = pull['number']
+        created_at = parse_time(pull.get('created_at'))
+        if number in numbers and created_at is not None:
+            dates[str(number)] = created_at.isoformat()
+    scope['pr_created_at'] = dates
     if parse_time(pr_observed_at):
         scope['pr_state_observed_at'] = pr_observed_at
     return {
@@ -200,7 +214,7 @@ def project_bundle(bundle, assessment, config, evaluate, scope_inventory, pr_sta
     if legacy_format:
         return {**report, 'adoption_comments': comments}
     state_observed_at = pr_observed_at or bundle.get('pr_state_observed_at') or bundle.get('collection_started_at')
-    return adoption_report(report, comments, state_observed_at)
+    return adoption_report(report, comments, state_observed_at, bundle.get('pulls', ()))
 
 
 def export_database(path, configs, evaluate, template, scope_inventory, pr_states, pr_observed_at, reviews,

@@ -305,7 +305,7 @@ def main():
         else:
             report = {'repository': repository, 'observed_at': observed_at, 'scope': scope,
                       'collection_complete': not failed}
-            report = exporter.adoption_report(report, adoption_comments, pr_observed_at or cohort['started_at'])
+            report = exporter.adoption_report(report, adoption_comments, pr_observed_at or cohort['started_at'], pulls)
         reports.append(report)
 
     if reviews:

@@ -51,11 +51,20 @@
     <section class="hero metrics-hero" aria-labelledby="page-title">
       <div class="hero-copy">
         <h1 id="page-title">AI 检视统计</h1>
-        <p>按 PR 创建日期查看 Bot Diff 评论和采纳证据。</p>
+        <p>查看 Bot Diff 评论和采纳结果。</p>
       </div>
       <div class="metrics-picker" aria-label="统计设置">
         <label for="metrics-period">统计批次</label>
         <select id="metrics-period"><option value="">正在载入</option></select>
+        <label for="metrics-calendar-grain">统计时间</label>
+        <select id="metrics-calendar-grain">
+          <option value="all">全部</option>
+          <option value="week">按周</option>
+          <option value="month">按月</option>
+        </select>
+        <label id="metrics-calendar-label" for="metrics-calendar-period" hidden>所选时段</label>
+        <select id="metrics-calendar-period" hidden disabled></select>
+        <p class="metrics-picker-note">按 PR 创建日期划分，使用北京时间。</p>
       </div>
     </section>
     <div class="metrics-mode-bar">
@@ -71,7 +80,7 @@
     <div id="metrics-single-picker" class="metrics-scope-panel" hidden>
       <div>
         <label for="report-select">仓库报告</label>
-        <p>选择要查看的仓库和观测时间。</p>
+        <p>选择要查看的仓库。</p>
       </div>
       <select id="report-select"><option value="">选择报告</option></select>
     </div>
