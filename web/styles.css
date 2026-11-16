@@ -161,7 +161,7 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
 .tag-editor { display: grid; gap: 11px; }
 .tag-editor p, .tag-editor .dialog-actions { margin: 0; }
 .tag-editor p:empty { display: none; }
-.tag-editor label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
+.tag-edit-field { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
 .tag-editor .tag-field { width: 100%; font-weight: 400; }
 .dialog-body ol { margin: 6px 0 14px; padding-left: 22px; }
 .dialog-body li { padding: 3px 0; }

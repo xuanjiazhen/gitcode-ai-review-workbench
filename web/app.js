@@ -285,8 +285,8 @@ function openTagBatch() {
   tagDialog.innerHTML = `${dialogHeader('tag-title', '批量编辑标签')}
     <form class="dialog-body tag-editor" id="tag-edit-form">
       <p>将操作应用到已选的 ${selected.length} 个仓库。</p>
-      <label>操作<select class="tag-field" id="tag-operation"><option value="add">添加标签</option><option value="remove">移除标签</option></select></label>
-      <label>标签名称<input class="tag-field" id="tag-name" list="tag-options" placeholder="输入新标签或选择已有标签" required></label>
+      <div class="tag-edit-field"><label for="tag-operation">操作</label><select class="tag-field" id="tag-operation"><option value="add">添加标签</option><option value="remove">移除标签</option></select></div>
+      <div class="tag-edit-field"><label for="tag-name">标签名称</label><input class="tag-field" id="tag-name" list="tag-options" placeholder="输入新标签或选择已有标签" required></div>
       <datalist id="tag-options">${tags.map(tag => `<option value="${escape(tag)}"></option>`).join('')}</datalist>
       <div class="dialog-actions"><button class="button button-primary" type="submit">应用到所选仓库</button></div>
       <p id="tag-edit-message" class="dialog-message error" role="status"></p>
@@ -328,15 +328,16 @@ function openTagConfig() {
       <p id="tag-config-message" class="dialog-message" role="status"></p>
     </div>`;
   const input = byId('tag-file');
+  const message = byId('tag-config-message');
   byId('tag-export').addEventListener('click', () => {
     downloadJson(RepoTags.exportConfig(), 'cangjie-repo-tags.json');
-    byId('tag-config-message').textContent = '已导出标签配置。';
+    message.classList.remove('error');
+    message.textContent = '已导出标签配置。';
   });
   byId('tag-import').addEventListener('click', () => input.click());
   input.addEventListener('change', async () => {
     const file = input.files[0];
     if (!file) return;
-    const message = byId('tag-config-message');
     try {
       const changed = RepoTags.importConfig(JSON.parse(await file.text()));
       message.classList.remove('error');
