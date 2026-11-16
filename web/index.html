@@ -12,20 +12,19 @@
 </head>
 <body>
   <a class="skip-link" href="#repos">跳至仓库表格</a>
-  <aside class="sidebar" aria-label="工作台导航">
+  <aside class="sidebar">
     <a class="brand" href="./"><span class="brand-mark" data-icon="code"></span><span>仓颉工作台<small>GITCODE WORKBENCH</small></span></a>
-    <div class="side-content">
+    <nav class="side-content" aria-label="工作台导航">
       <p class="nav-label">工作区</p>
-      <button class="side-button active" id="nav-repos" aria-current="page"><span data-icon="grid"></span>AI 检视管理<span class="nav-pointer">↗</span></button>
-      <a class="side-button" href="./metrics.html"><span data-icon="chart"></span>AI 检视统计</a>
-      <button class="side-button" id="nav-sync"><span data-icon="sync"></span>更新数据</button>
-    </div>
+      <a class="side-button" href="./repositories.html" data-tag-route="./repositories.html"><span data-icon="repo"></span>仓库配置</a>
+      <a class="side-button active" href="#repos" aria-current="page"><span data-icon="grid"></span>AI 检视管理<span class="nav-pointer" aria-hidden="true">↗</span></a>
+      <a class="side-button" href="./metrics.html" data-tag-route="./metrics.html"><span data-icon="chart"></span>AI 检视统计</a>
+    </nav>
     <a class="side-org" href="https://gitcode.com/Cangjie" target="_blank" rel="noopener noreferrer"><span class="org-mark">CJ</span><span>Cangjie<small>GitCode 组织</small></span><span class="side-arrow" data-icon="external"></span></a>
   </aside>
   <main class="workspace">
     <header class="topbar">
       <div class="breadcrumbs"><span>个人工作台</span><span class="slash">/</span><strong>AI 检视管理</strong></div>
-      <button class="button button-quiet" id="top-sync"><span data-icon="sync"></span>更新数据</button>
     </header>
     <section class="hero" aria-labelledby="page-title">
       <div class="hero-copy">
@@ -44,20 +43,14 @@
     <section class="repository-section" id="repos" aria-labelledby="repos-title">
       <div class="section-heading">
         <div><h2 id="repos-title">仓库清单 <span id="repo-total" class="counter">—</span></h2><p id="data-date">正在载入仓库清单</p></div>
-        <button class="button" id="export-button"><span data-icon="download"></span>导出快照</button>
       </div>
+      <p class="config-warning" id="config-warnings" role="status" hidden></p>
       <div class="table-card">
         <div class="tag-tools" aria-label="仓库标签">
           <div class="tag-scope">
             <label for="tag-filter">仓库标签</label>
             <select class="tag-field" id="tag-filter"><option value="">全部标签</option></select>
-            <a id="tag-metrics" href="./metrics.html" hidden>查看该标签统计 <span data-icon="arrow"></span></a>
-          </div>
-          <div class="tag-actions">
-            <span id="tag-selection-count" role="status" hidden></span>
-            <button class="button" id="tag-clear-selection" type="button" hidden>清空选择</button>
-            <button class="button button-primary" id="tag-batch" type="button" disabled>批量编辑标签</button>
-            <button class="button" id="tag-config" type="button">标签配置</button>
+            <a class="scope-link" id="tag-metrics" href="./metrics.html" data-tag-route="./metrics.html" hidden>查看该标签统计 <span data-icon="arrow"></span></a>
           </div>
         </div>
         <div class="table-tools">
@@ -66,7 +59,7 @@
         </div>
         <div class="table-scroll" tabindex="0" aria-label="仓库配置表格，可横向滚动">
           <table>
-            <thead><tr><th scope="col" class="repo-select"><input id="tag-select-all" type="checkbox" aria-label="选择当前显示的仓库" disabled></th><th scope="col">仓库</th><th scope="col">AI 检视</th><th scope="col">PR 创建自动检视</th><th scope="col">自定义 Skill</th><th scope="col" class="row-end">详情</th></tr></thead>
+            <thead><tr><th scope="col">仓库</th><th scope="col">AI 检视</th><th scope="col">PR 创建自动检视</th><th scope="col">自定义 Skill</th><th scope="col" class="row-end">详情</th></tr></thead>
             <tbody id="rows"></tbody>
           </table>
         </div>
@@ -76,9 +69,5 @@
     <footer><span>仓颉工作台</span><a href="https://docs.gitcode.com/docs/help/home/org_project/codereview/ai_codereview/" target="_blank" rel="noopener noreferrer">AtomCode AI Review 文档 <span data-icon="external"></span></a></footer>
   </main>
   <dialog id="detail-dialog" class="drawer" aria-labelledby="detail-title"></dialog>
-  <dialog id="sync-dialog" class="modal" aria-labelledby="sync-title"></dialog>
-  <dialog id="tag-dialog" class="modal" aria-labelledby="tag-title"></dialog>
-  <input id="file-input" type="file" accept="application/json,.json" hidden>
-  <div id="toast" class="toast" role="status" hidden></div>
 </body>
 </html>

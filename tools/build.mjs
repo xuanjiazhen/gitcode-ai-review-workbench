@@ -25,6 +25,9 @@ if (reviewMetrics.version !== 1 || !Array.isArray(reviewMetrics.reports)) {
 if (publicBuild && (snapshot.repositories.length || reviewMetrics.reports.length)) {
   throw new Error('GitHub Pages requires empty review data');
 }
+if (publicBuild && inventory.repositories.some(repo => repo.visibility != null && repo.visibility !== 'public')) {
+  throw new Error('GitHub Pages requires a public repository inventory');
+}
 
 await mkdir(dist, { recursive: true });
 await cp(at('web/'), dist, { recursive: true });
@@ -35,4 +38,4 @@ await writeFile(at('dist/snapshot.json'), publicBuild
   : await readFile(at('data/snapshot.json'), 'utf8'));
 await writeFile(at('dist/review-metrics.json'), publicBuild ? '{"version":1,"reports":[]}' : metricSource);
 await writeFile(at('dist/.nojekyll'), '');
-console.log(`Built dist/ with ${inventory.total} public repositories and ${snapshot.repositories.length} audit records.`);
+console.log(`Built dist/ with ${inventory.total} repositories and ${snapshot.repositories.length} audit records.`);

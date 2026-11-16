@@ -91,8 +91,8 @@ h1 span { margin-left: .075em; color: var(--lime); }
 .tag-scope label { font-size: 12px; font-weight: 700; }
 .tag-field { min-width: 0; max-width: 100%; min-height: 34px; padding: 5px 8px; border: 1px solid #cbd5be; border-radius: 6px; background: var(--white); color: var(--ink); font: inherit; font-size: 13px; }
 .tag-scope .tag-field { max-width: min(215px, 100%); }
-#tag-metrics { align-items: center; gap: 4px; color: #365d27; text-decoration: underline; text-underline-offset: 3px; font-size: 12px; font-weight: 650; }
-#tag-metrics:not([hidden]) { display: inline-flex; }
+.scope-link { align-items: center; gap: 4px; color: #365d27; text-decoration: underline; text-underline-offset: 3px; font-size: 12px; font-weight: 650; white-space: nowrap; }
+.scope-link:not([hidden]) { display: inline-flex; }
 #tag-selection-count { color: var(--muted); font-size: 12px; }
 .tag-actions .button:disabled { opacity: .56; cursor: default; }
 .table-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 13px; }
@@ -132,6 +132,17 @@ tbody tr:has(.repo-select input:checked) { background: #f1f7e6; }
 .row-open:hover, .close-button:hover { background: #eaf3da; border-color: #cbd6bb; }
 .table-foot { display: flex; justify-content: space-between; gap: 10px; padding: 10px 15px; color: var(--muted); font-size: 12px; }
 .table-foot a, footer a { display: inline-flex; align-items: center; gap: 5px; }
+.config-hero { min-height: 190px; }
+.config-hero h1 { font-size: clamp(40px, 4.5vw, 68px); }
+.config-section { margin-top: 25px; }
+.config-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.config-actions .button:disabled { opacity: .6; cursor: default; }
+.config-summary { margin: 0; color: #c3cdb6; font-size: 12px; }
+.config-warning { padding: 8px 12px; border: 1px solid #e9d9ba; border-radius: 6px; color: #734c25; background: #fbf4e7; font-size: 12px; }
+.config-tools .search { width: min(280px, 100%); }
+.config-cell-note { display: block; color: var(--muted); font-size: 12px; }
+.config-table td:nth-child(3) .repo-tags { margin: 0; }
+.config-table time { color: #363d31; font: 12px var(--mono); white-space: nowrap; }
 .empty { padding: 40px 20px; text-align: center; color: var(--muted); }
 footer { display: flex; justify-content: space-between; gap: 12px; padding: 22px 0; color: var(--muted); font-size: 12px; }
 
@@ -196,6 +207,7 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
 }
 @media (max-width: 490px) {
   .sidebar { flex-wrap: wrap; gap: 5px; }
+  .side-content { flex-wrap: wrap; }
   .side-button [data-icon] { display: none; }
   .hero { grid-template-columns: 1fr; padding: 22px 17px 16px; }
   h1 { margin: 10px 0; }
@@ -207,6 +219,7 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-top [data-icon] { display: inline-grid; }
   .section-heading h2 { font-size: 21px; }
+  .config-section .section-heading { align-items: flex-start; flex-direction: column; }
   .tag-tools { padding: 8px; }
   .table-tools { align-items: stretch; flex-direction: column-reverse; padding: 8px; }
   .search { width: 100%; }

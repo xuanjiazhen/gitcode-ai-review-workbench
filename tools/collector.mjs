@@ -74,7 +74,8 @@ export async function collectGitCodeAudit({ token, onProgress = () => {}, reques
       settingsUrl: `${url}${settingsSuffix}`,
       description: typeof project.description === 'string' ? project.description : '',
       language: Array.isArray(project.main_repository_language) ? project.main_repository_language[0] ?? '' : '',
-      archived: project.archived === true,
+      ...(typeof project.archived === 'boolean' ? { archived: project.archived } : {}),
+      ...(['public', 'private', 'internal'].includes(project.visibility) ? { visibility: project.visibility } : {}),
     };
   }
 
@@ -160,8 +161,11 @@ export async function collectGitCodeAudit({ token, onProgress = () => {}, reques
     const aiReview = typeof review?.disable === 'boolean' ? !review.disable : null;
     const auto = review?.pull_request_opened?.code_review;
     const autoReview = typeof auto === 'boolean' ? auto : null;
-    const skillItems = skillList.body?.items ?? skillList.body?.data?.items;
-    const skills = normalizeSkills(skillItems, project.settingsUrl);
+    const skillData = skillList.body?.items == null ? skillList.body?.data : skillList.body;
+    const skillItems = skillData?.items;
+    const skillTotal = skillData?.total;
+    const skills = typeof skillTotal === 'number' && skillTotal !== skillItems?.length
+      ? null : normalizeSkills(skillItems, project.settingsUrl);
     const notes = [];
     if (aiReview === null || autoReview === null) notes.push(`基础配置：${config.error ?? '状态字段缺失'}`);
     if (skills === null) notes.push(`Skill 列表：${skillList.error ?? '数据缺失或返回格式异常'}`);

@@ -217,7 +217,7 @@
 .metrics-detail-body pre { margin: 8px 0; padding: 10px; border: 1px solid var(--edge); border-radius: 6px; background: white; font-family: var(--mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 
 @media (max-width: 760px) {
-  .metrics-page .side-content { display: flex; align-items: center; gap: 4px; }
+  .metrics-page .side-content { display: flex; flex-wrap: wrap; align-items: center; max-width: 100%; gap: 4px; }
   .metrics-page .side-content .active { display: flex; }
   .metrics-page .side-button { width: auto; font-size: 12px; white-space: nowrap; }
   .metrics-page .side-button [data-icon], .metrics-page .metrics-nav-icon, .metrics-page .nav-pointer { display: none; }

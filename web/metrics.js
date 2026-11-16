@@ -1,4 +1,4 @@
-import { RepoTags } from './repo-tags.js';
+import { RepoConfig, RepoTags } from './repo-config.js';
 
 const byId = id => document.getElementById(id);
 const storageKey = 'cangjie-workbench:review-metrics:v1';
@@ -8,6 +8,7 @@ const detail = byId('metrics-detail');
 const modeSelect = byId('metrics-mode');
 const periodSelect = byId('metrics-period');
 const tagSelect = byId('metrics-tag-select');
+const configLink = byId('metrics-config-link');
 const repoSearch = byId('metrics-repo-search');
 const repoOptions = byId('metrics-repo-options');
 const counts = [
@@ -42,6 +43,8 @@ const pageSize = 50;
 let reports = [];
 let enabledRepos = [];
 let organizationKnown = false;
+let repositoryRecords = new Map();
+let tagOptions = [];
 let activeReports = [];
 let detailRows = [];
 let tablePage = 0;
@@ -514,18 +517,24 @@ function renderPeriods(preferred) {
 }
 
 function refreshTagOptions() {
-  const tags = RepoTags.list();
-  const selected = tags.find(tag => RepoTags.key(tag) === RepoTags.key(activeTag));
+  const selected = tagOptions.find(tag => RepoTags.key(tag) === RepoTags.key(activeTag));
   if (selected) activeTag = selected;
-  tagSelect.replaceChildren(new Option(tags.length || activeTag ? '全部标签' : '暂无标签', ''),
-    ...tags.map(tag => new Option(tag, tag)));
-  if (activeTag && !selected) tagSelect.add(new Option(`${activeTag} · 当前浏览器无此标签`, activeTag));
+  tagSelect.replaceChildren(new Option(tagOptions.length || activeTag ? '全部标签' : '暂无标签', ''),
+    ...tagOptions.map(tag => new Option(tag, tag)));
+  if (activeTag && !selected) tagSelect.add(new Option(`${activeTag} · 当前仓库清单无此标签`, activeTag));
   tagSelect.value = activeTag;
-  tagSelect.disabled = !tags.length && !activeTag;
+  tagSelect.disabled = !tagOptions.length && !activeTag;
+  updateConfigLink();
+}
+
+function updateConfigLink() {
+  configLink.href = activeTag ? `./repositories.html?${new URLSearchParams({ tag: activeTag })}` : './repositories.html';
 }
 
 function filterTagged(paths) {
-  return activeTag ? paths.filter(path => RepoTags.has(path, activeTag)) : paths;
+  if (!activeTag) return paths;
+  const key = RepoTags.key(activeTag);
+  return paths.filter(path => repositoryRecords.get(repoKey(path))?.tags.some(tag => RepoTags.key(tag) === key));
 }
 
 function availableRepos(batch) {
@@ -544,15 +553,24 @@ function setSingleRepo(path) {
   else activeSingleRepo = path;
 }
 
+function repoAvailability(path, withReport) {
+  const current = repositoryRecords.get(repoKey(path))?.aiReview === false ? '当前已关闭 AI 检视' : '';
+  return [withReport ? '' : '暂无报告', current].filter(Boolean).join(' · ');
+}
+
 function renderRepoPicker(batch, available, replaceOptions = true) {
   const listing = new Set(batch.reports.map(report => repoKey(report.repository)));
   if (replaceOptions) {
     const search = repoSearch.value.trim().toLowerCase();
     const choices = available.filter(path => repoKey(path).includes(search));
-    repoOptions.innerHTML = choices.length ? choices.map(path => `<label>
-      <input type="checkbox" value="${escape(path)}"${customRepos.has(repoKey(path)) ? ' checked' : ''}>
-      <span>${escape(path.split('/').at(-1))}<small>${listing.has(repoKey(path)) ? '有报告' : '暂无报告'}</small></span>
-    </label>`).join('') : '<p class="empty">没有匹配的仓库。</p>';
+    repoOptions.innerHTML = choices.length ? choices.map(path => {
+      const withReport = listing.has(repoKey(path));
+      const status = repoAvailability(path, withReport);
+      return `<label>
+        <input type="checkbox" value="${escape(path)}"${customRepos.has(repoKey(path)) ? ' checked' : ''}>
+        <span>${escape(path.split('/').at(-1))}<small>${status || '有报告'}</small></span>
+      </label>`;
+    }).join('') : '<p class="empty">没有匹配的仓库。</p>';
   }
   byId('metrics-repo-all').disabled = !available.length || available.every(path => customRepos.has(repoKey(path)));
   byId('metrics-repo-clear').disabled = !available.some(path => customRepos.has(repoKey(path)));
@@ -570,8 +588,10 @@ function renderScope(replaceOptions = true) {
     const preferred = singleRepoByTag.get(RepoTags.key(activeTag)) ?? activeSingleRepo;
     const singleRepo = available.find(path => repoKey(path) === repoKey(preferred)) ??
       available.find(path => existing.has(repoKey(path))) ?? available[0] ?? '';
-    reportSelect.replaceChildren(...available.map(path => new Option(
-      `${path}${existing.has(repoKey(path)) ? '' : ' · 暂无报告'}`, path)));
+    reportSelect.replaceChildren(...available.map(path => {
+      const status = repoAvailability(path, existing.has(repoKey(path)));
+      return new Option(status ? `${path} · ${status}` : path, path);
+    }));
     if (!available.length) reportSelect.add(new Option('暂无可选仓库', ''));
     reportSelect.disabled = !available.length;
     reportSelect.value = singleRepo;
@@ -584,12 +604,18 @@ function renderScope(replaceOptions = true) {
     renderRepoPicker(batch, available, replaceOptions);
     selected = available.filter(path => customRepos.has(repoKey(path)));
   } else {
-    selected = organizationKnown ? filterTagged(enabledRepos) : available;
+    selected = organizationKnown ? filterTagged(enabledRepos) :
+      available.filter(path => repositoryRecords.get(repoKey(path))?.aiReview !== false);
   }
   const visibleReports = selected.filter(path => existing.has(repoKey(path))).length;
   const scopeKnown = mode !== 'overview' || organizationKnown;
   const tagLabel = activeTag ? `标签 ${activeTag} · ` : '';
-  byId('metrics-scope-summary').textContent = `${tagLabel}已选 ${selected.length} 个仓库 · ${visibleReports} 个有报告${scopeKnown ? '' : ' · 组织清单待核实'}`;
+  const disabledCount = selected.filter(path => repositoryRecords.get(repoKey(path))?.aiReview === false).length;
+  const scopeNotes = [
+    !scopeKnown && '组织清单待核实',
+    disabledCount && `${disabledCount} 个仓库当前已关闭 AI 检视，组织整体不包含这些仓库`,
+  ].filter(Boolean);
+  byId('metrics-scope-summary').textContent = [`${tagLabel}已选 ${selected.length} 个仓库`, `${visibleReports} 个有报告`, ...scopeNotes].join(' · ');
   const emptyTitle = activeTag && (mode !== 'custom' || !available.length) ? '当前标签没有可统计的仓库'
     : mode === 'custom' ? '请选择至少一个仓库' : '暂无统计报告';
   renderReport(selected, batch, scopeKnown, emptyTitle);
@@ -624,6 +650,7 @@ tagSelect.addEventListener('change', () => {
   if (activeTag) url.searchParams.set('tag', activeTag);
   else url.searchParams.delete('tag');
   history.replaceState(null, '', url);
+  updateConfigLink();
   renderScope();
 });
 repoSearch.addEventListener('input', () => {
@@ -701,36 +728,17 @@ byId('metrics-export').addEventListener('click', () => {
 
 async function initialize() {
   let bundled = [];
-  const getJson = async path => {
-    const response = await fetch(path);
+  const loadReports = async () => {
+    const response = await fetch('./review-metrics.json');
     if (!response.ok) throw new Error('读取失败');
-    return response.json();
+    return readReports(await response.json());
   };
-  const [reportsResult, settingsResult, inventoryResult] = await Promise.allSettled([
-    getJson('./review-metrics.json').then(readReports), getJson('./snapshot.json'), getJson('./inventory.json'),
-  ]);
+  const [reportsResult, configResult] = await Promise.allSettled([loadReports(), RepoConfig.load()]);
   if (reportsResult.status === 'fulfilled') bundled = reportsResult.value;
   else {
     notice('站点报告未能加载，可从本地导入报告。', true);
   }
-  const settings = new Map();
-  for (const value of [settingsResult.value, readLocalSettings()]) {
-    if (value?.version !== 1 || value.organization !== 'Cangjie' || !Array.isArray(value.repositories)) continue;
-    for (const row of value.repositories) {
-      if (!validPath(row?.path) || typeof row.aiReview !== 'boolean') continue;
-      const key = repoKey(row.path);
-      const previous = settings.get(key);
-      const time = validDate(row.checkedAt) ? Date.parse(row.checkedAt) : 0;
-      if (!previous || time >= previous.time) settings.set(key, { ...row, time });
-    }
-  }
-  const inventory = inventoryResult.value?.repositories;
-  organizationKnown = Array.isArray(inventory) && inventory.length > 0 &&
-    inventory.every(row => validPath(row?.path) && settings.has(repoKey(row.path)));
-  if (organizationKnown) {
-    enabledRepos = inventory.map(({ path }) => path).filter(path => settings.get(repoKey(path)).aiReview)
-      .sort((a, b) => a.localeCompare(b));
-  }
+  if (configResult.status === 'fulfilled') updateConfiguration(configResult.value);
   try {
     const local = localStorage.getItem(storageKey);
     reports = mergeReports(bundled, local ? readReports(JSON.parse(local)) : []);
@@ -741,16 +749,19 @@ async function initialize() {
   if (linkedRepo) setScopeMode('single');
   refreshTagOptions();
   renderPeriods();
-  RepoTags.subscribe(() => {
+  RepoConfig.subscribe(config => {
+    updateConfiguration(config);
     refreshTagOptions();
     renderScope();
   });
   byId('metrics-import').disabled = false;
 }
 
-function readLocalSettings() {
-  try { return JSON.parse(localStorage.getItem('cangjie-review-workbench:v1')); }
-  catch { return null; }
+function updateConfiguration(config) {
+  organizationKnown = config.organizationKnown;
+  enabledRepos = config.enabledRepositories;
+  repositoryRecords = new Map(config.records.map(row => [repoKey(row.path), row]));
+  tagOptions = config.tags;
 }
 
 initialize();
