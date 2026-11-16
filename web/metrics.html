@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta name="description" content="查看 GitCode AI 检视意见、解决状态与采纳统计快照。">
+  <meta name="description" content="查看商用交付与社区运作仓库的 Bot Diff 评论和采纳证据。">
   <meta name="theme-color" content="#181b16">
   <title>AI 检视统计 · 仓颉工作台</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='10' fill='%23d5fa63'/%3E%3Cpath fill='none' stroke='%23191c15' stroke-width='3.5' stroke-linecap='square' d='M18 13 8 24l10 11m12-22 10 11-10 11m-9-1 6-20'/%3E%3C/svg%3E">
@@ -51,7 +51,7 @@
     <section class="hero metrics-hero" aria-labelledby="page-title">
       <div class="hero-copy">
         <h1 id="page-title">AI 检视统计</h1>
-        <p>按 PR 创建日期查看检视量、解决状态和采纳结论。</p>
+        <p>按 PR 创建日期查看 Bot Diff 评论和采纳证据。</p>
       </div>
       <div class="metrics-picker" aria-label="统计设置">
         <label for="metrics-period">统计批次</label>
@@ -61,14 +61,11 @@
     <div class="metrics-mode-bar">
       <fieldset id="metrics-mode">
         <legend class="visually-hidden">统计范围</legend>
-        <label><input type="radio" name="metrics-mode" value="overview" checked><span>组织整体</span></label>
+        <label><input type="radio" name="metrics-mode" value="overview" checked><span>范围内全部仓库</span></label>
         <label><input type="radio" name="metrics-mode" value="single"><span>单个仓库</span></label>
         <label><input type="radio" name="metrics-mode" value="custom"><span>自选仓库</span></label>
       </fieldset>
-      <div class="metrics-tag-filter">
-        <label for="metrics-tag-select">仓库标签</label>
-        <select id="metrics-tag-select" disabled><option value="">全部标签</option></select>
-      </div>
+      <p class="metrics-scope-tag">商用交付&amp;社区运作</p>
       <p id="metrics-scope-summary" class="metrics-scope-summary" role="status"></p>
     </div>
     <div id="metrics-single-picker" class="metrics-scope-panel" hidden>

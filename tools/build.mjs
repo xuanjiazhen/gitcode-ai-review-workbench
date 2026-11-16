@@ -11,6 +11,11 @@ const metricSource = await readFile(at('data/review-metrics.json'), 'utf8').catc
   return '{"version":1,"reports":[]}';
 });
 const reviewMetrics = JSON.parse(metricSource);
+const tagsSource = await readFile(at('data/repo-tags.json'), 'utf8').catch(error => {
+  if (error.code !== 'ENOENT') throw error;
+  return '{"version":1,"repositories":[]}';
+});
+const tags = JSON.parse(tagsSource);
 
 if (inventory.organization !== 'Cangjie' || inventory.repositories.length !== inventory.total ||
     new Set(inventory.repositories.map(repo => repo.path.toLowerCase())).size !== inventory.total) {
@@ -22,8 +27,11 @@ if (snapshot.version !== 1 || snapshot.organization !== inventory.organization |
 if (reviewMetrics.version !== 1 || !Array.isArray(reviewMetrics.reports)) {
   throw new Error('Invalid review metrics export');
 }
-if (publicBuild && (snapshot.repositories.length || reviewMetrics.reports.length)) {
-  throw new Error('GitHub Pages requires empty review data');
+if (tags.version !== 1 || !Array.isArray(tags.repositories)) {
+  throw new Error('Invalid repository tags');
+}
+if (publicBuild && (snapshot.repositories.length || reviewMetrics.reports.length || tags.repositories.length)) {
+  throw new Error('GitHub Pages requires empty review data and tags');
 }
 if (publicBuild && inventory.repositories.some(repo => repo.visibility != null && repo.visibility !== 'public')) {
   throw new Error('GitHub Pages requires a public repository inventory');
@@ -37,5 +45,6 @@ await writeFile(at('dist/snapshot.json'), publicBuild
   ? JSON.stringify({ version: 1, organization: inventory.organization, repositories: [] })
   : await readFile(at('data/snapshot.json'), 'utf8'));
 await writeFile(at('dist/review-metrics.json'), publicBuild ? '{"version":1,"reports":[]}' : metricSource);
+await writeFile(at('dist/repo-tags.json'), tagsSource);
 await writeFile(at('dist/.nojekyll'), '');
 console.log(`Built dist/ with ${inventory.total} repositories and ${snapshot.repositories.length} audit records.`);

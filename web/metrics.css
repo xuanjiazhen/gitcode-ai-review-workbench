@@ -28,7 +28,7 @@
   background: #f6faf8;
 }
 .metrics-picker label { color: #324c43; font-size: 12px; font-weight: 650; }
-.metrics-picker select, .metrics-scope-panel select, .metrics-tag-filter select {
+.metrics-picker select, .metrics-scope-panel select {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -64,16 +64,16 @@
   gap: 8px 14px;
   margin-top: 12px;
 }
-.metrics-tag-filter {
-  display: flex;
-  flex: 0 1 230px;
-  align-items: center;
-  min-width: 0;
-  gap: 8px;
+.metrics-scope-tag {
+  margin: 0;
+  padding: 5px 10px;
+  border: 1px solid #c9d8ce;
+  border-radius: 20px;
+  background: #e8f0eb;
+  color: #20594c;
+  font-size: 12px;
+  font-weight: 650;
 }
-.metrics-tag-filter label { flex: none; color: #405951; font-size: 12px; font-weight: 650; }
-.metrics-tag-filter select { background: var(--white); }
-.metrics-tag-filter select:disabled { color: var(--muted); }
 #metrics-mode { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 4px; min-inline-size: 0; border: 1px solid #c9d8ce; border-radius: 8px; background: #fff; }
 #metrics-mode label { position: relative; cursor: pointer; }
 #metrics-mode input { position: absolute; opacity: 0; }
@@ -191,12 +191,11 @@
 .metrics-repo-results th[scope='row'] { padding-block: 5px; }
 .metrics-repo-link { border: 0; padding: 5px 0; color: #17584a; font: 650 13px var(--mono); background: transparent; min-height: 34px; }
 .metrics-repo-link:hover { text-decoration: underline; text-underline-offset: 3px; }
-.metrics-volume { display: flex; align-items: center; gap: 8px; }
-.metrics-volume meter { width: 72px; height: 10px; accent-color: #176b5e; }
 .metrics-pagination div { display: flex; gap: 8px; }
 .metrics-pagination .button:disabled { opacity: .5; cursor: default; }
 .metrics-progress { display: block; width: 100%; height: 11px; margin: 8px 0; accent-color: #637e37; }
-.metrics-finding-title { min-width: min(26ch, 100%); overflow-wrap: anywhere; }
+.metrics-finding-title { overflow-wrap: anywhere; }
+.metrics-finding-title small { display: block; color: var(--muted); }
 .metrics-finding-tools { justify-content: flex-start; flex-wrap: wrap; }
 .metrics-finding-tools > label { color: var(--muted); font-size: 12px; }
 .metrics-finding-tools select { padding: 5px; border: 1px solid var(--edge); border-radius: 6px; color: var(--ink); background: var(--paper); }
@@ -208,9 +207,6 @@
 .adoption-formula dt { font-weight: 650; }
 .adoption-formula dt strong { margin-left: 4px; color: #17584a; font-variant-numeric: tabular-nums; }
 .adoption-formula dd { margin: 0; color: var(--muted); }
-.adoption-rules summary { min-height: 32px; line-height: 32px; color: #17584a; font-weight: 650; cursor: pointer; }
-.adoption-rules details ul { margin: 4px 0 0; padding-left: 18px; font-size: 13px; }
-.adoption-rules details li { margin-bottom: 3px; }
 .metrics-detail-body { overflow-wrap: anywhere; }
 .metrics-detail-body a { color: #365d27; text-decoration: underline; text-underline-offset: 3px; }
 .metrics-reference { white-space: pre-wrap; }
@@ -235,7 +231,6 @@
   .metrics-picker { padding: 9px 10px; gap: 6px 8px; }
   .metrics-picker select { min-height: 44px; }
   #metrics-mode span { padding-inline: 9px; font-size: 12px; }
-  .metrics-tag-filter { flex: 1 1 100%; }
   .metrics-repo-options { max-block-size: 215px; }
   .metrics-report { margin-top: 18px; }
   .metrics-controls { gap: 5px; }

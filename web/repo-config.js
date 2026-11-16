@@ -1,6 +1,7 @@
 import { RepoTags } from './repo-tags.js';
 
 export { RepoTags };
+export const METRICS_TAG = '商用交付&社区运作';
 
 const organization = 'Cangjie';
 const storageKey = 'cangjie-review-workbench:v1';
@@ -9,6 +10,7 @@ const settingsSuffix = '/setting/apps/atomcode_ai_review';
 const subscribers = new Set();
 const localWarning = '未能读取浏览器中保存的仓库快照。';
 const seedWarning = '未能读取站点附带的仓库快照。';
+const tagsWarning = '未能读取站点附带的仓库标签。';
 let loadPromise;
 let loaded;
 let unsavedRows = [];
@@ -147,7 +149,7 @@ function getState() {
   return {
     inventory: loaded.inventory, records, tags: RepoTags.list().filter(tag => assigned.has(tag)), enabledRepositories, lastChecked,
     organizationKnown: records.length > 0 && loaded.inventory.total > 0 && records.every(row => row.aiReview !== null),
-    warnings: [loaded.warning, local.warning].filter(Boolean),
+    warnings: [loaded.warning, loaded.tagsWarning, local.warning].filter(Boolean),
   };
 }
 
@@ -171,8 +173,9 @@ async function load() {
     loadPromise = Promise.all([
       fetchJson('./inventory.json').then(readInventory),
       fetchJson('./snapshot.json').then(readSnapshot).then(seed => ({ seed })).catch(() => ({ seed: [], warning: seedWarning })),
-    ]).then(([inventory, collected]) => {
-      loaded = { inventory, ...collected };
+      fetchJson('./repo-tags.json').then(RepoTags.setDefaults).catch(() => tagsWarning),
+    ]).then(([inventory, collected, tagWarning]) => {
+      loaded = { inventory, ...collected, tagsWarning: tagWarning };
     }).catch(error => {
       loadPromise = undefined;
       throw error;

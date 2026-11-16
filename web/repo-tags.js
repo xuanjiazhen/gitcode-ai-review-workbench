@@ -6,6 +6,7 @@ const repositoryPath = /^[\w.-]+(?:\/[\w.-]+)+$/u;
 const forbiddenTagCharacters = /[\p{Cc}\u061c\u200e\u200f\u202a-\u202e\u2066-\u2069]/u;
 let cachedText;
 let cachedModel;
+let defaults = makeModel();
 
 function pathKey(value) {
   if (typeof value !== 'string') return '';
@@ -55,10 +56,10 @@ function parseConfig(value) {
 function currentModel() {
   let raw;
   try { raw = globalThis.localStorage.getItem(storageKey); }
-  catch { return cachedModel ?? makeModel(); }
+  catch { return cachedModel ?? defaults; }
   if (cachedModel && raw === cachedText) return cachedModel;
 
-  let model = makeModel();
+  let model = defaults;
   try {
     if (raw !== null) model = parseConfig(JSON.parse(raw));
   } catch {
@@ -67,6 +68,11 @@ function currentModel() {
   cachedText = raw;
   cachedModel = model;
   return model;
+}
+
+function setDefaults(value) {
+  defaults = parseConfig(value);
+  cachedModel = undefined;
 }
 
 function copyModel(model) {
@@ -157,6 +163,7 @@ globalThis.addEventListener?.('storage', event => {
 export const RepoTags = Object.freeze({
   maxLength,
   key,
+  setDefaults,
   list() { return [...currentModel().labels.values()].sort(order.compare); },
   forRepo(path) {
     const model = currentModel();

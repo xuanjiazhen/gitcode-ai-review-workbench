@@ -11,12 +11,14 @@ import re
 import sys
 from threading import Lock, local
 import time
+import unicodedata
 from urllib.parse import quote, unquote, urlsplit
 
 
 ROOT = Path(__file__).resolve().parents[1]
 ATOM_GIT_BOT_ID = '672dd45c4ea6673461aa2102'
 PROJECT_PATH = re.compile(r'Cangjie/[A-Za-z0-9_.-]+', re.IGNORECASE)
+DEFAULT_TAG = '商用交付&社区运作'
 
 
 def timestamp(value):
@@ -129,6 +131,22 @@ def enabled_repositories(snapshot, inventory):
     return enabled, entries
 
 
+def tagged_repositories(value, name):
+    if not isinstance(value, dict) or value.get('version') != 1 or not isinstance(value.get('repositories'), list):
+        raise ValueError('Expected a version 1 repository tag configuration.')
+    tag_key = ' '.join(unicodedata.normalize('NFKC', name).split()).lower()
+    selected = set()
+    for row in value['repositories']:
+        path, tags = row['path'], row['tags']
+        if not isinstance(path, str) or not isinstance(tags, list) or any(not isinstance(tag, str) for tag in tags):
+            raise ValueError('Invalid repository tag assignment.')
+        if any(' '.join(unicodedata.normalize('NFKC', tag).split()).lower() == tag_key for tag in tags):
+            selected.add(path.casefold())
+    if not tag_key or not selected:
+        raise ValueError('The requested tag is not assigned to any repositories.')
+    return selected
+
+
 def group_pulls(api, entries, first, end):
     pulls = api.pages('/org/Cangjie/pull_requests', {
         'state': 'all', 'sort': 'created', 'direction': 'desc',
@@ -152,7 +170,10 @@ def group_pulls(api, entries, first, end):
             raise ValueError('GitCode returned a Pull Request from a repository absent from the inventory.')
         if number in groups[key]:
             raise ValueError('GitCode returned two Pull Requests with the same repository and number.')
-        groups[key][number] = {'number': number, 'created_at': pull['created_at']}
+        groups[key][number] = {
+            'number': number, 'created_at': pull['created_at'], 'state': pull.get('state'),
+            'merged_at': pull.get('merged_at'),
+        }
     return groups
 
 
@@ -176,8 +197,14 @@ def main():
     parser.add_argument('--metrics-dir', type=Path, default=ROOT.parent / 'gitcode-review-metrics')
     parser.add_argument('--inventory', type=Path, default=ROOT / 'data/inventory.json')
     parser.add_argument('--settings', type=Path, required=True, help='verified private review configuration snapshot')
+    parser.add_argument('--repository', action='append', help='restrict the report to these enabled repositories; repeat for each one')
+    parser.add_argument('--tags', type=Path, help='optional repository tag configuration selecting tagged enabled repositories')
+    parser.add_argument('--tag', default=DEFAULT_TAG, help='tag name to use with --tags')
     parser.add_argument('--checkpoint-dir', type=Path, required=True, help='private folder, one directory per observation run')
     parser.add_argument('--output', type=Path, required=True, help='derived metrics JSON')
+    parser.add_argument('--pr-states', type=Path, help='optional GitCode PR state observation for an existing checkpoint')
+    parser.add_argument('--adoption-evidence', type=Path, help='verified judgments for exact raw comment observations')
+    parser.add_argument('--legacy-format', action='store_true', help='also emit the original metrics fields')
     parser.add_argument('--created-after', default=start_thirty_days.isoformat(),
                         help='cohort lower bound, inclusive, with timezone (default: 30 complete Beijing days)')
     parser.add_argument('--created-before', default=end_today.isoformat(),
@@ -194,15 +221,28 @@ def main():
         parser.error('The cohort start must precede the end.')
     bounds = {'created_after': first.isoformat(), 'created_before': end.isoformat()}
     repositories, known = enabled_repositories(exporter.read_json(args.settings), exporter.read_json(args.inventory))
+    enabled = {repo.casefold() for repo in repositories}
+    targets = {repo.casefold() for repo in args.repository} if args.repository else enabled
+    if not targets.issubset(enabled):
+        parser.error('--repository must name an enabled repository from the verified settings snapshot.')
+    if args.tags:
+        targets = targets & tagged_repositories(exporter.read_json(args.tags), args.tag)
+    if not targets:
+        parser.error('No enabled repositories match the selected scope.')
     checkpoint = args.checkpoint_dir.resolve()
     output = args.output.resolve()
-    if output.is_relative_to(checkpoint) or output in (args.settings.resolve(), args.inventory.resolve()):
+    inputs = (args.settings, args.inventory, args.tags, args.pr_states, args.adoption_evidence)
+    if output.is_relative_to(checkpoint) or any(path is not None and output == path.resolve() for path in inputs):
         parser.error('Choose a separate output path outside the checkpoint directory.')
+    pr_states, pr_observed_at = exporter.read_pr_states(args.pr_states)
+    reviews = exporter.read_adoption_evidence(args.adoption_evidence)
     api = PagedAPI(Client, APIError, args.delay, os.environ.get('GITCODE_TOKEN'))
     cohort_path = checkpoint / 'cohort.json'
     if cohort_path.is_file():
         cohort = exporter.read_json(cohort_path)
-        if cohort['bounds'] != bounds or list(cohort['repositories']) != repositories:
+        old_scope = {repo.casefold() for repo in cohort['repositories']}
+        scope_compatible = targets.issubset(old_scope) if args.repository or args.tags else old_scope == targets
+        if cohort['bounds'] != bounds or not scope_compatible:
             parser.error('Checkpoint cohort bounds or enabled repository list differ.')
     else:
         print('Enumerating organization pull requests…', file=sys.stderr, flush=True)
@@ -212,12 +252,13 @@ def main():
         }}
         exporter.write_output(cohort, cohort_path)
 
-    total = sum(len(pulls) for pulls in cohort['repositories'].values())
-    print(f'{len(repositories)} eligible repositories, {total} pull requests', file=sys.stderr, flush=True)
+    selected = {repo: pulls for repo, pulls in cohort['repositories'].items() if repo.casefold() in targets}
+    total = sum(len(pulls) for pulls in selected.values())
+    print(f'{len(selected)} eligible repositories, {total} pull requests', file=sys.stderr, flush=True)
     failures = defaultdict(dict)
     with ThreadPoolExecutor(max_workers=args.workers) as pool:
         pending = {}
-        for repository, pulls in sorted(cohort['repositories'].items(), key=lambda pair: len(pair[1])):
+        for repository, pulls in sorted(selected.items(), key=lambda pair: len(pair[1])):
             directory = checkpoint / repository.split('/')[-1]
             exporter.write_output({'repository': repository, **bounds, 'pulls': pulls}, directory / 'manifest.json')
             for pull in pulls:
@@ -237,7 +278,7 @@ def main():
                 print(f'{done}/{total} PR processed, {count} failed', file=sys.stderr, flush=True)
 
     reports = []
-    for repository, pulls in cohort['repositories'].items():
+    for repository, pulls in selected.items():
         numbers = sorted(pull['number'] for pull in pulls)
         failed = sorted(failures[repository])
         directory = checkpoint / repository.split('/')[-1]
@@ -246,20 +287,29 @@ def main():
         scope = {'type': 'selected_prs', 'prs': numbers, **bounds,
                  'collected_prs': len(observations), 'failed_prs': failed}
         bundle = {'repository': repository, 'observed_at': observed_at, 'scope': scope, 'complete': not failed,
+                  'pulls': pulls, 'pr_state_observed_at': cohort['started_at'],
+                  'pr_observations': {str(row['pr']): row['observed_at'] for row in observations},
                   'comments': [{'pr': row['pr'], 'comment': comment}
-                               for row in observations for comment in row['comments']]}
+                               for row in observations for comment in row['comments']
+                               if args.legacy_format or comment.get('comment_type') == 'diff_comment']}
         config = {'repository': repository, 'bot_logins': ['atomgit-bot'], 'bot_ids': [ATOM_GIT_BOT_ID]}
-        report = exporter.project_report(evaluate(bundle, template(bundle, config), config))
-        bot_comments = scope_inventory(bundle, config['bot_logins'], config['bot_ids'])
-        scope['bot_pr_count'] = len({row['pr'] for row in bot_comments['diff'].values()})
-        report['scope'] = scope
-        report['candidates'] = []
-        for key, row in bot_comments['diff'].items():
-            resolved = row['comment'].get('resolved')
-            state = 'resolved' if resolved is True else 'unresolved' if resolved is False else 'unknown'
-            report['candidates'].append({'id': key, 'pr': row['pr'], 'state': state})
+        diff_comments = scope_inventory(bundle, config['bot_logins'], config['bot_ids'])['diff']
+        scope['bot_pr_count'] = len({row['pr'] for row in diff_comments.values()})
+        adoption_comments = exporter.project_adoption_comments(bundle, diff_comments, [],
+                                                               pr_states, pr_observed_at, reviews)
+        if args.legacy_format:
+            report = exporter.project_report(evaluate(bundle, template(bundle, config), config))
+            report['scope'] = scope
+            report['adoption_comments'] = adoption_comments
+            report['candidates'] = [{key: row[key] for key in ('id', 'pr', 'state')} for row in adoption_comments]
+        else:
+            report = {'repository': repository, 'observed_at': observed_at, 'scope': scope,
+                      'collection_complete': not failed}
+            report = exporter.adoption_report(report, adoption_comments, pr_observed_at or cohort['started_at'])
         reports.append(report)
 
+    if reviews:
+        raise ValueError('Some adoption evidence does not match a raw Diff comment in the exported scope.')
     exporter.write_output({'version': 1, 'reports': reports}, output)
     if any(failures.values()):
         print('Partial cohort exported. Rerun with the same checkpoint directory to retry missing PRs.', file=sys.stderr)

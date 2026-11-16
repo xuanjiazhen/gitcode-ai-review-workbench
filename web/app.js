@@ -1,9 +1,10 @@
-import { RepoConfig, skillStatus, isVerified, hasEvidence } from './repo-config.js';
+import { METRICS_TAG, RepoConfig, RepoTags, skillStatus, isVerified, hasEvidence } from './repo-config.js';
 import { byId, dateLabel, dialogHeader, dismissOnBackdrop, escape, externalLink, icon, renderIcons, tagChips, updateTagScope } from './workbench-ui.js';
 
 const detail = byId('detail-dialog');
 const tagFilter = byId('tag-filter');
 const search = byId('search');
+const metricsTagKey = RepoTags.key(METRICS_TAG);
 const view = {
   filter: 'all', records: [], tags: [],
   tag: new URLSearchParams(location.search).get('tag') ?? '',
@@ -52,7 +53,7 @@ function scopedRecords() {
 
 function renderTagScope() {
   view.tag = updateTagScope(tagFilter, view.tags, view.tag);
-  byId('tag-metrics').hidden = !view.tag;
+  byId('tag-metrics').hidden = RepoTags.key(view.tag) !== metricsTagKey;
 
   const records = scopedRecords();
   const total = records.length;
@@ -108,7 +109,7 @@ function renderDetail(path) {
     <div class="dialog-body">
       ${row.description ? `<p>${escape(row.description)}</p>` : ''}
       <div class="dialog-actions">${externalLink(row.settingsUrl, '打开 AI 检视设置', 'button button-primary')}${externalLink(row.url, '查看仓库', 'button')}
-        <a class="button" href="./metrics.html?repo=${encodeURIComponent(row.path)}">查看检视统计</a></div>
+        ${row.tags.some(tag => RepoTags.key(tag) === metricsTagKey) ? `<a class="button" href="./metrics.html?repo=${encodeURIComponent(row.path)}">查看检视统计</a>` : ''}</div>
       <dl class="status-list">
         <div><dt>AI 检视</dt><dd>${pill(row.aiReview)}</dd></div>
         <div><dt>PR 创建自动检视</dt><dd>${pill(row.autoReview)}</dd></div>
