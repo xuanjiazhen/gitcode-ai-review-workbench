@@ -1,3 +1,5 @@
+import { RepoTags } from './repo-tags.js';
+
 const byId = id => document.getElementById(id);
 const storageKey = 'cangjie-workbench:review-metrics:v1';
 const findingsTable = byId('metrics-content');
@@ -5,6 +7,7 @@ const reportSelect = byId('report-select');
 const detail = byId('metrics-detail');
 const modeSelect = byId('metrics-mode');
 const periodSelect = byId('metrics-period');
+const tagSelect = byId('metrics-tag-select');
 const repoSearch = byId('metrics-repo-search');
 const repoOptions = byId('metrics-repo-options');
 const counts = [
@@ -34,6 +37,7 @@ const validPath = value => typeof value === 'string' && /^[\w.-]+\/[\w.-]+$/.tes
 const validDate = value => typeof value === 'string' && Number.isFinite(Date.parse(value));
 const query = new URLSearchParams(location.search);
 const linkedRepo = validPath(query.get('repo')) ? query.get('repo') : '';
+const linkedTag = query.get('tag');
 const pageSize = 50;
 let reports = [];
 let enabledRepos = [];
@@ -42,6 +46,8 @@ let activeReports = [];
 let detailRows = [];
 let tablePage = 0;
 let activeSingleRepo = linkedRepo;
+let activeTag = RepoTags.key(linkedTag) ? linkedTag.trim() : '';
+const singleRepoByTag = new Map();
 const customRepos = new Set();
 let customInitialized = false;
 
@@ -379,13 +385,12 @@ function adoptionPanel(report, basis) {
   </section>`;
 }
 
-function renderReport(selected, batch, scopeKnown) {
+function renderReport(selected, batch, scopeKnown, emptyTitle) {
   const { stats: report, rows, members } = aggregate(selected, batch, scopeKnown);
   activeReports = rows;
   byId('metrics-export').disabled = !rows.length;
   if (!selected.length) {
-    const title = scopeMode() === 'custom' ? '请选择至少一个仓库' : '暂无统计报告';
-    findingsTable.innerHTML = `<section class="metrics-panel empty"><h2>${title}</h2><p>也可导入本地统计工具导出的报告。</p></section>`;
+    findingsTable.innerHTML = `<section class="metrics-panel empty"><h2>${emptyTitle}</h2><p>也可导入本地统计工具导出的报告。</p></section>`;
     return;
   }
   const coverage = coveragePanel(selected, members);
@@ -508,15 +513,35 @@ function renderPeriods(preferred) {
   renderScope();
 }
 
+function refreshTagOptions() {
+  const tags = RepoTags.list();
+  const selected = tags.find(tag => RepoTags.key(tag) === RepoTags.key(activeTag));
+  if (selected) activeTag = selected;
+  tagSelect.replaceChildren(new Option(tags.length || activeTag ? '全部标签' : '暂无标签', ''),
+    ...tags.map(tag => new Option(tag, tag)));
+  if (activeTag && !selected) tagSelect.add(new Option(`${activeTag} · 当前浏览器无此标签`, activeTag));
+  tagSelect.value = activeTag;
+  tagSelect.disabled = !tags.length && !activeTag;
+}
+
+function filterTagged(paths) {
+  return activeTag ? paths.filter(path => RepoTags.has(path, activeTag)) : paths;
+}
+
 function availableRepos(batch) {
   const unique = new Map([...enabledRepos, ...batch.reports.map(report => report.repository)]
     .map(path => [repoKey(path), path]));
   if (linkedRepo && !unique.has(repoKey(linkedRepo))) unique.set(repoKey(linkedRepo), linkedRepo);
-  return [...unique.values()].sort((a, b) => a.localeCompare(b));
+  return filterTagged([...unique.values()]).sort((a, b) => a.localeCompare(b));
 }
 
 function currentBatch() {
   return batches().find(batch => batch.id === periodSelect.value) ?? { label: '', reports: [] };
+}
+
+function setSingleRepo(path) {
+  if (activeTag) singleRepoByTag.set(RepoTags.key(activeTag), path);
+  else activeSingleRepo = path;
 }
 
 function renderRepoPicker(batch, available, replaceOptions = true) {
@@ -542,16 +567,15 @@ function renderScope(replaceOptions = true) {
   byId('metrics-repo-picker').hidden = mode !== 'custom';
   let selected;
   if (mode === 'single') {
-    if (!available.some(path => path === activeSingleRepo)) {
-      activeSingleRepo = available.find(path => repoKey(path) === repoKey(activeSingleRepo)) ??
-        batch.reports[0]?.repository ?? available[0] ?? '';
-    }
+    const preferred = singleRepoByTag.get(RepoTags.key(activeTag)) ?? activeSingleRepo;
+    const singleRepo = available.find(path => repoKey(path) === repoKey(preferred)) ??
+      available.find(path => existing.has(repoKey(path))) ?? available[0] ?? '';
     reportSelect.replaceChildren(...available.map(path => new Option(
       `${path}${existing.has(repoKey(path)) ? '' : ' · 暂无报告'}`, path)));
     if (!available.length) reportSelect.add(new Option('暂无可选仓库', ''));
     reportSelect.disabled = !available.length;
-    reportSelect.value = activeSingleRepo;
-    selected = activeSingleRepo ? [activeSingleRepo] : [];
+    reportSelect.value = singleRepo;
+    selected = singleRepo ? [singleRepo] : [];
   } else if (mode === 'custom') {
     if (!customInitialized) {
       batch.reports.forEach(report => customRepos.add(repoKey(report.repository)));
@@ -560,12 +584,15 @@ function renderScope(replaceOptions = true) {
     renderRepoPicker(batch, available, replaceOptions);
     selected = available.filter(path => customRepos.has(repoKey(path)));
   } else {
-    selected = organizationKnown ? enabledRepos : available;
+    selected = organizationKnown ? filterTagged(enabledRepos) : available;
   }
   const visibleReports = selected.filter(path => existing.has(repoKey(path))).length;
   const scopeKnown = mode !== 'overview' || organizationKnown;
-  byId('metrics-scope-summary').textContent = `已选 ${selected.length} 个仓库 · ${visibleReports} 个有报告${scopeKnown ? '' : ' · 组织清单待核实'}`;
-  renderReport(selected, batch, scopeKnown);
+  const tagLabel = activeTag ? `标签 ${activeTag} · ` : '';
+  byId('metrics-scope-summary').textContent = `${tagLabel}已选 ${selected.length} 个仓库 · ${visibleReports} 个有报告${scopeKnown ? '' : ' · 组织清单待核实'}`;
+  const emptyTitle = activeTag && (mode !== 'custom' || !available.length) ? '当前标签没有可统计的仓库'
+    : mode === 'custom' ? '请选择至少一个仓库' : '暂无统计报告';
+  renderReport(selected, batch, scopeKnown, emptyTitle);
 }
 
 function openFinding(finding) {
@@ -588,9 +615,17 @@ function openFinding(finding) {
   detail.showModal();
 }
 
-reportSelect.addEventListener('change', () => { activeSingleRepo = reportSelect.value; renderScope(); });
+reportSelect.addEventListener('change', () => { setSingleRepo(reportSelect.value); renderScope(); });
 modeSelect.addEventListener('change', () => renderScope());
 periodSelect.addEventListener('change', () => renderScope());
+tagSelect.addEventListener('change', () => {
+  activeTag = tagSelect.value;
+  const url = new URL(location.href);
+  if (activeTag) url.searchParams.set('tag', activeTag);
+  else url.searchParams.delete('tag');
+  history.replaceState(null, '', url);
+  renderScope();
+});
 repoSearch.addEventListener('input', () => {
   const batch = currentBatch();
   renderRepoPicker(batch, availableRepos(batch));
@@ -607,13 +642,17 @@ byId('metrics-repo-all').addEventListener('click', () => {
   availableRepos(currentBatch()).forEach(path => customRepos.add(repoKey(path)));
   renderScope();
 });
-byId('metrics-repo-clear').addEventListener('click', () => { customRepos.clear(); renderScope(); });
+byId('metrics-repo-clear').addEventListener('click', () => {
+  if (activeTag) availableRepos(currentBatch()).forEach(path => customRepos.delete(repoKey(path)));
+  else customRepos.clear();
+  renderScope();
+});
 findingsTable.addEventListener('click', event => {
   const button = event.target.closest('[data-finding]');
   if (button) openFinding(detailRows[Number(button.dataset.finding)]);
   const repoButton = event.target.closest('[data-single-repo]');
   if (repoButton) {
-    activeSingleRepo = repoButton.dataset.singleRepo;
+    setSingleRepo(repoButton.dataset.singleRepo);
     setScopeMode('single');
     renderScope();
     reportSelect.focus();
@@ -638,7 +677,7 @@ byId('metrics-file').addEventListener('change', async event => {
     }
     if (imported.length === 1) {
       setScopeMode('single');
-      activeSingleRepo = imported[0].repository;
+      setSingleRepo(imported[0].repository);
     }
     renderPeriods(batchKey(imported[0]));
     notice(saved ? `已导入 ${imported.length} 份报告，保存在当前浏览器。` : '报告已打开，浏览器未能保存导入记录。', !saved);
@@ -700,7 +739,12 @@ async function initialize() {
     notice('浏览器保存的报告未能加载，可重新导入。', true);
   }
   if (linkedRepo) setScopeMode('single');
+  refreshTagOptions();
   renderPeriods();
+  RepoTags.subscribe(() => {
+    refreshTagOptions();
+    renderScope();
+  });
   byId('metrics-import').disabled = false;
 }
 

@@ -86,6 +86,15 @@ h1 span { margin-left: .075em; color: var(--lime); }
 .counter { padding: 2px 7px; border-radius: 6px; background: #e6ecd9; color: #4a5939; font: 600 12px var(--mono); letter-spacing: 0; }
 .section-heading p { margin: 0; color: var(--muted); font-size: 12px; }
 .table-card { border: 1px solid var(--edge); border-radius: 12px; background: var(--white); overflow: clip; }
+.tag-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 14px; padding: 10px 13px; border-bottom: 1px solid var(--edge); background: #f4f7ed; }
+.tag-scope, .tag-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: 100%; }
+.tag-scope label { font-size: 12px; font-weight: 700; }
+.tag-field { min-width: 0; max-width: 100%; min-height: 34px; padding: 5px 8px; border: 1px solid #cbd5be; border-radius: 6px; background: var(--white); color: var(--ink); font: inherit; font-size: 13px; }
+.tag-scope .tag-field { max-width: min(215px, 100%); }
+#tag-metrics { align-items: center; gap: 4px; color: #365d27; text-decoration: underline; text-underline-offset: 3px; font-size: 12px; font-weight: 650; }
+#tag-metrics:not([hidden]) { display: inline-flex; }
+#tag-selection-count { color: var(--muted); font-size: 12px; }
+.tag-actions .button:disabled { opacity: .56; cursor: default; }
 .table-tools { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 10px 13px; }
 .filters { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
 .filter { padding: 6px 10px; min-height: 32px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: var(--muted); font-size: 12px; font-weight: 650; white-space: nowrap; }
@@ -101,11 +110,17 @@ thead { color: #515b49; background: #f0f3ea; font-size: 12px; }
 th { padding: 10px 15px; white-space: nowrap; font-weight: 690; }
 td { padding: 9px 15px; border-bottom: 1px solid #edf0e7; }
 tbody tr:hover { background: #fafcf5; }
+.repo-select { width: 38px; padding-inline: 12px 2px; }
+.repo-select input { width: 17px; height: 17px; margin: 0; vertical-align: middle; accent-color: #4b682f; }
+tbody tr:has(.repo-select input:checked) { background: #f1f7e6; }
 .repo-name { display: flex; align-items: center; gap: 10px; min-width: 0; }
-.repo-icon { display: inline-grid; place-items: center; width: 32px; height: 32px; border: 1px solid #e5eadb; border-radius: 7px; color: #506842; background: #f3f6ed; font-size: 15px; }
+.repo-icon { display: inline-grid; flex: none; place-items: center; width: 32px; height: 32px; border: 1px solid #e5eadb; border-radius: 7px; color: #506842; background: #f3f6ed; font-size: 15px; }
 .repo-text { min-width: 0; }
 .repo-text a { font: 650 13px/1.4 var(--mono); overflow-wrap: anywhere; }
 .repo-text small { display: block; color: var(--muted); font-size: 11px; }
+.repo-tags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.repo-tag { max-width: 100%; padding: 2px 6px; border: 1px solid #cbd8ba; border-radius: 5px; background: #f2f6ea; color: #3b592a; font-size: 11px; line-height: 1.4; overflow-wrap: anywhere; }
+.repo-tag:hover { background: #e4eed5; }
 .pill { display: inline-flex; align-items: center; gap: 6px; min-height: 25px; padding: 2px 8px; border-radius: 5px; white-space: nowrap; font-size: 11px; font-weight: 680; background: #f0f1eb; color: #555f4d; }
 .pill::before { content: ''; width: 6px; height: 6px; border: 1px solid currentColor; border-radius: 50%; }
 .pill.on { background: #e8f5d7; color: #335a20; }
@@ -143,6 +158,11 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
 .skill-links { display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 8px; }
 .skill-links a { color: #365d27; text-decoration: underline; text-underline-offset: 3px; font-size: 12px; }
 .dialog-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 11px 0 0; }
+.tag-editor { display: grid; gap: 11px; }
+.tag-editor p, .tag-editor .dialog-actions { margin: 0; }
+.tag-editor p:empty { display: none; }
+.tag-editor label { display: grid; gap: 4px; font-size: 13px; font-weight: 650; }
+.tag-editor .tag-field { width: 100%; font-weight: 400; }
 .dialog-body ol { margin: 6px 0 14px; padding-left: 22px; }
 .dialog-body li { padding: 3px 0; }
 .bookmarklet { cursor: grab; }
@@ -187,6 +207,7 @@ dialog.modal { width: min(560px, calc(100% - 22px)); max-height: calc(100dvh - 2
   .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .metric-top [data-icon] { display: inline-grid; }
   .section-heading h2 { font-size: 21px; }
+  .tag-tools { padding: 8px; }
   .table-tools { align-items: stretch; flex-direction: column-reverse; padding: 8px; }
   .search { width: 100%; }
   .filter { padding: 4px 5px; font-size: 11px; }

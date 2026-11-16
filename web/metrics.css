@@ -28,7 +28,7 @@
   background: #f6faf8;
 }
 .metrics-picker label { color: #324c43; font-size: 12px; font-weight: 650; }
-.metrics-picker select, .metrics-scope-panel select {
+.metrics-picker select, .metrics-scope-panel select, .metrics-tag-filter select {
   width: 100%;
   min-width: 0;
   min-height: 44px;
@@ -64,6 +64,16 @@
   gap: 8px 14px;
   margin-top: 12px;
 }
+.metrics-tag-filter {
+  display: flex;
+  flex: 0 1 230px;
+  align-items: center;
+  min-width: 0;
+  gap: 8px;
+}
+.metrics-tag-filter label { flex: none; color: #405951; font-size: 12px; font-weight: 650; }
+.metrics-tag-filter select { background: var(--white); }
+.metrics-tag-filter select:disabled { color: var(--muted); }
 #metrics-mode { display: flex; flex-wrap: wrap; gap: 5px; margin: 0; padding: 4px; min-inline-size: 0; border: 1px solid #c9d8ce; border-radius: 8px; background: #fff; }
 #metrics-mode label { position: relative; cursor: pointer; }
 #metrics-mode input { position: absolute; opacity: 0; }
@@ -225,6 +235,7 @@
   .metrics-picker { padding: 9px 10px; gap: 6px 8px; }
   .metrics-picker select { min-height: 44px; }
   #metrics-mode span { padding-inline: 9px; font-size: 12px; }
+  .metrics-tag-filter { flex: 1 1 100%; }
   .metrics-repo-options { max-block-size: 215px; }
   .metrics-report { margin-top: 18px; }
   .metrics-controls { gap: 5px; }

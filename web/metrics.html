@@ -59,6 +59,10 @@
         <label><input type="radio" name="metrics-mode" value="single"><span>单个仓库</span></label>
         <label><input type="radio" name="metrics-mode" value="custom"><span>自选仓库</span></label>
       </fieldset>
+      <div class="metrics-tag-filter">
+        <label for="metrics-tag-select">仓库标签</label>
+        <select id="metrics-tag-select" disabled><option value="">全部标签</option></select>
+      </div>
       <p id="metrics-scope-summary" class="metrics-scope-summary" role="status"></p>
     </div>
     <div id="metrics-single-picker" class="metrics-scope-panel" hidden>

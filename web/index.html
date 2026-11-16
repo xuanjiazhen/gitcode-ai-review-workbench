@@ -47,13 +47,26 @@
         <button class="button" id="export-button"><span data-icon="download"></span>导出快照</button>
       </div>
       <div class="table-card">
+        <div class="tag-tools" aria-label="仓库标签">
+          <div class="tag-scope">
+            <label for="tag-filter">仓库标签</label>
+            <select class="tag-field" id="tag-filter"><option value="">全部标签</option></select>
+            <a id="tag-metrics" href="./metrics.html" hidden>查看该标签统计 <span data-icon="arrow"></span></a>
+          </div>
+          <div class="tag-actions">
+            <span id="tag-selection-count" role="status" hidden></span>
+            <button class="button" id="tag-clear-selection" type="button" hidden>清空选择</button>
+            <button class="button button-primary" id="tag-batch" type="button" disabled>批量编辑标签</button>
+            <button class="button" id="tag-config" type="button">标签配置</button>
+          </div>
+        </div>
         <div class="table-tools">
           <div id="filters" class="filters" role="group" aria-label="筛选仓库"></div>
           <label class="search"><span data-icon="search"></span><input id="search" type="search" placeholder="搜索仓库…" aria-label="搜索仓库" autocomplete="off"><kbd>/</kbd></label>
         </div>
         <div class="table-scroll" tabindex="0" aria-label="仓库配置表格，可横向滚动">
           <table>
-            <thead><tr><th scope="col">仓库</th><th scope="col">AI 检视</th><th scope="col">PR 创建自动检视</th><th scope="col">自定义 Skill</th><th scope="col" class="row-end">详情</th></tr></thead>
+            <thead><tr><th scope="col" class="repo-select"><input id="tag-select-all" type="checkbox" aria-label="选择当前显示的仓库" disabled></th><th scope="col">仓库</th><th scope="col">AI 检视</th><th scope="col">PR 创建自动检视</th><th scope="col">自定义 Skill</th><th scope="col" class="row-end">详情</th></tr></thead>
             <tbody id="rows"></tbody>
           </table>
         </div>
@@ -64,6 +77,7 @@
   </main>
   <dialog id="detail-dialog" class="drawer" aria-labelledby="detail-title"></dialog>
   <dialog id="sync-dialog" class="modal" aria-labelledby="sync-title"></dialog>
+  <dialog id="tag-dialog" class="modal" aria-labelledby="tag-title"></dialog>
   <input id="file-input" type="file" accept="application/json,.json" hidden>
   <div id="toast" class="toast" role="status" hidden></div>
 </body>
